@@ -58,7 +58,7 @@ pub enum Operator {
     Append,     // ++
 }
 
-pub fn lex<T: BufRead>(buf: T) -> ToppleResult<Vec<Token>> {
+pub fn lex<T: BufRead>(buf: T) -> ToppleResult<TokenStream> {
     let mut res = Vec::new();
     let mut buf_iter = buf.lines().enumerate();
     while let Some((i, line)) = buf_iter.next() {
@@ -80,15 +80,15 @@ pub fn lex<T: BufRead>(buf: T) -> ToppleResult<Vec<Token>> {
                 continue;
             }
             match c {
-                '(' => res.push(Token::LeftParen),
-                ')' => res.push(Token::RightParen),
-                '[' => res.push(Token::LeftBracket),
-                ']' => res.push(Token::RightBracket),
-                '{' => res.push(Token::LeftCurly),
-                '}' => res.push(Token::RightCurly),
-                ',' => res.push(Token::Comma),
-                '.' => res.push(Token::Dot),
-                ';' => res.push(Token::SemiColon),
+                '(' => res.push((Token::LeftParen, i, j)),
+                ')' => res.push((Token::RightParen, i, j)),
+                '[' => res.push((Token::LeftBracket, i, j)),
+                ']' => res.push((Token::RightBracket, i, j)),
+                '{' => res.push((Token::LeftCurly, i, j)),
+                '}' => res.push((Token::RightCurly, i, j)),
+                ',' => res.push((Token::Comma, i, j)),
+                '.' => res.push((Token::Dot, i, j)),
+                ';' => res.push((Token::SemiColon, i, j)),
                 '0' => match iter.peek() {
                     Some((_, p)) => {
                         if *p == 'b' {
@@ -99,7 +99,7 @@ pub fn lex<T: BufRead>(buf: T) -> ToppleResult<Vec<Token>> {
                         }
                     }
                     None => {
-                        res.push(Token::Num(Num::Imm(0)));
+                        res.push((Token::Num(Num::Imm(0)), i, j));
                         return Ok(res);
                     }
                 },
@@ -114,7 +114,7 @@ pub fn lex<T: BufRead>(buf: T) -> ToppleResult<Vec<Token>> {
                             lex_op(&mut iter, &c, &mut res, i, j)?;
                         }
                     }
-                    None => res.push(Token::Operator(Operator::Sub)),
+                    None => res.push((Token::Operator(Operator::Sub), i, j)),
                 },
                 '=' | '+' | '*' | '/' | '&' | '|' | '!' | '^' | '<' | '>' => {
                     lex_op(&mut iter, &c, &mut res, i, j)?
@@ -123,7 +123,7 @@ pub fn lex<T: BufRead>(buf: T) -> ToppleResult<Vec<Token>> {
                     if let Some((_, p)) = iter.peek() {
                         if c == *p {
                             iter.next();
-                            res.push(Token::Str(String::new()));
+                            res.push((Token::Str(String::new()), i, j));
                             continue;
                         }
                     }
@@ -139,7 +139,7 @@ pub fn lex<T: BufRead>(buf: T) -> ToppleResult<Vec<Token>> {
 fn lex_num(
     iter: &mut Peekable<Enumerate<Chars>>,
     c: &char,
-    res: &mut Vec<Token>,
+    res: &mut TokenStream,
     line: usize,
     chr: usize,
     is_neg: bool,
@@ -149,7 +149,7 @@ fn lex_num(
     if iter.peek().is_none() {
         match num_str.parse::<u64>() {
             Ok(n) => {
-                res.push(Token::Num(Num::Imm(n)));
+                res.push((Token::Num(Num::Imm(n)), line, chr));
                 return Ok(());
             }
             Err(e) => {
@@ -172,7 +172,7 @@ fn lex_num(
     if is_neg {
         match num_str.parse::<i64>() {
             Ok(n) => {
-                res.push(Token::Num(Num::Imm(n as u64)));
+                res.push((Token::Num(Num::Imm(n as u64)), line, chr));
                 Ok(())
             }
             Err(e) => Err(
@@ -184,7 +184,7 @@ fn lex_num(
     } else {
         match num_str.parse::<u64>() {
             Ok(n) => {
-                res.push(Token::Num(Num::Imm(n)));
+                res.push((Token::Num(Num::Imm(n)), line, chr));
                 Ok(())
             }
             Err(e) => Err(
@@ -198,7 +198,7 @@ fn lex_num(
 
 fn lex_bits(
     iter: &mut Peekable<Enumerate<Chars>>,
-    res: &mut Vec<Token>,
+    res: &mut TokenStream,
     line: usize,
     chr: usize,
 ) -> ToppleResult<()> {
@@ -227,7 +227,7 @@ fn lex_bits(
         )
         .wrap())
     } else {
-        res.push(Token::Num(Num::Bits(bin_str)));
+        res.push((Token::Num(Num::Bits(bin_str)), line, chr));
         Ok(())
     }
 }
@@ -236,7 +236,7 @@ fn lex_string<T: BufRead>(
     iter: &mut Peekable<Enumerate<Chars>>,
     buf_iter: &mut std::iter::Enumerate<Lines<T>>,
     c: &char,
-    res: &mut Vec<Token>,
+    res: &mut TokenStream,
     line: usize,
     chr: usize,
 ) -> ToppleResult<()> {
@@ -246,7 +246,7 @@ fn lex_string<T: BufRead>(
 fn lex_ident(
     iter: &mut Peekable<Enumerate<Chars>>,
     c: &char,
-    res: &mut Vec<Token>,
+    res: &mut TokenStream,
     line: usize,
     chr: usize,
 ) -> ToppleResult<()> {
@@ -256,7 +256,7 @@ fn lex_ident(
 fn lex_op(
     iter: &mut Peekable<Enumerate<Chars>>,
     c: &char,
-    res: &mut Vec<Token>,
+    res: &mut TokenStream,
     line: usize,
     chr: usize,
 ) -> ToppleResult<()> {
@@ -273,11 +273,11 @@ mod lexer_tests {
         let out = lex(buf.as_bytes()).unwrap();
         let n = (-394 as i64) as u64;
         assert_eq!(out.len(), 6);
-        assert_eq!(out[0], Token::Num(Num::Imm(123)));
-        assert_eq!(out[1], Token::Num(Num::Bits("10110111".into())));
-        assert_eq!(out[2], Token::Num(Num::Imm(10110000)));
-        assert_eq!(out[3], Token::Num(Num::Imm(173456)));
-        assert_eq!(out[4], Token::Num(Num::Imm(789)));
-        assert_eq!(out[5], Token::Num(Num::Imm(n)));
+        assert_eq!(out[0].0, Token::Num(Num::Imm(123)));
+        assert_eq!(out[1].0, Token::Num(Num::Bits("10110111".into())));
+        assert_eq!(out[2].0, Token::Num(Num::Imm(10110000)));
+        assert_eq!(out[3].0, Token::Num(Num::Imm(173456)));
+        assert_eq!(out[4].0, Token::Num(Num::Imm(789)));
+        assert_eq!(out[5].0, Token::Num(Num::Imm(n)));
     }
 }
