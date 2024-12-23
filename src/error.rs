@@ -21,15 +21,17 @@ impl Error for ToppleError {}
 #[derive(Debug)]
 pub struct LexerError {
     txt: String,
-    line: u64,
+    line: usize,
+    chr: usize,
     source: Option<Box<dyn Error>>,
 }
 
 impl LexerError {
-    pub fn new<T: ToString>(txt: T, line: u64) -> Self {
+    pub fn new<T: ToString>(txt: T, line: usize, chr: usize) -> Self {
         Self {
             txt: txt.to_string(),
             line,
+            chr,
             source: None,
         }
     }
@@ -52,8 +54,8 @@ impl Display for LexerError {
         };
         write!(
             f,
-            "Lexer Error at Line {}: {}{}",
-            self.line, self.txt, src_txt
+            "Lexer Error at Line {}:{}, {}{}",
+            self.line, self.chr, self.txt, src_txt
         )
     }
 }
