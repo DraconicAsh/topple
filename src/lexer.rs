@@ -61,6 +61,7 @@ pub enum Operator {
 pub fn lex<T: BufRead>(buf: T) -> ToppleResult<TokenStream> {
     let mut res = Vec::new();
     let mut buf_iter = buf.lines().enumerate();
+    let mut reading_literal = (false, 0, 0, String::new());
     while let Some((i, line)) = buf_iter.next() {
         let line = match line {
             Ok(l) => l,
@@ -75,6 +76,16 @@ pub fn lex<T: BufRead>(buf: T) -> ToppleResult<TokenStream> {
             }
         };
         let mut iter = line.chars().enumerate().peekable();
+        if reading_literal.0 {
+            lex_string(
+                &mut iter,
+                &'\'',
+                &mut res,
+                reading_literal.1,
+                reading_literal.2,
+                &mut reading_literal,
+            )?;
+        }
         while let Some((j, c)) = iter.next() {
             if c.is_whitespace() {
                 continue;
@@ -127,7 +138,7 @@ pub fn lex<T: BufRead>(buf: T) -> ToppleResult<TokenStream> {
                             continue;
                         }
                     }
-                    lex_string(&mut iter, &mut buf_iter, &c, &mut res, i, j)?;
+                    lex_string(&mut iter, &c, &mut res, i, j, &mut reading_literal)?;
                 }
                 _ => lex_ident(&mut iter, &c, &mut res, i, j)?,
             }
@@ -232,15 +243,90 @@ fn lex_bits(
     }
 }
 
-fn lex_string<T: BufRead>(
+fn lex_string(
     iter: &mut Peekable<Enumerate<Chars>>,
-    buf_iter: &mut std::iter::Enumerate<Lines<T>>,
     c: &char,
     res: &mut TokenStream,
     line: usize,
     chr: usize,
+    reading_literal: &mut (bool, usize, usize, String),
 ) -> ToppleResult<()> {
-    todo!()
+    let is_literal = *c == '\'' || reading_literal.0;
+    let mut s = if reading_literal.0 {
+        std::mem::take(&mut reading_literal.3)
+    } else {
+        String::new()
+    };
+    loop {
+        let p = match iter.peek() {
+            Some((_, peek)) => peek,
+            None => {
+                if is_literal {
+                    s.push('\n');
+                    if !reading_literal.0 {
+                        *reading_literal = (true, line, chr, s)
+                    }
+                    return Ok(());
+                } else {
+                    return Err(LexerError::new(
+                        "Strings (\" \") cannot be multiple lines, try a Raw String (' ')?",
+                        line,
+                        chr,
+                    )
+                    .wrap());
+                }
+            }
+        };
+        if *p == *c {
+            res.push((Token::Str(s), line, chr));
+            iter.next();
+            reading_literal.0 = false;
+            break;
+        }
+        if is_literal {
+            if *p == '\\' {
+                iter.next();
+                if let Some((_, p2)) = iter.peek() {
+                    if *p2 == '\'' {
+                        s.push('\'');
+                        iter.next();
+                        continue;
+                    }
+                }
+                s.push('\\');
+                continue;
+            }
+            s.push(*p);
+            iter.next();
+        } else if *p == '\\' {
+            iter.next();
+            let p2 = match iter.peek() {
+                Some((_, peek)) => peek,
+                None => {
+                    return Err(LexerError::new(
+                        "Strings (\" \") cannot be multiple lines, tray a Raw String (' ')?",
+                        line,
+                        chr,
+                    )
+                    .wrap())
+                }
+            };
+            match *p2 {
+                'n' => s.push('\n'),
+                'r' => s.push('\r'),
+                't' => s.push('\t'),
+                '\\' => s.push('\\'),
+                '0' => s.push('\0'),
+                '"' => s.push('"'),
+                _ => continue,
+            }
+            iter.next();
+        } else {
+            s.push(*p);
+            iter.next();
+        }
+    }
+    Ok(())
 }
 
 fn lex_ident(
@@ -279,5 +365,52 @@ mod lexer_tests {
         assert_eq!(out[3].0, Token::Num(Num::Imm(173456)));
         assert_eq!(out[4].0, Token::Num(Num::Imm(789)));
         assert_eq!(out[5].0, Token::Num(Num::Imm(n)));
+    }
+
+    #[test]
+    fn string_lexer() {
+        let buf = r#"
+        "first" 'second'
+        'th
+ird'
+        ""''
+        "#;
+        let out = lex(buf.as_bytes()).unwrap();
+        assert_eq!(out.len(), 5);
+        assert_eq!(out[0].0, Token::Str("first".into()));
+        assert_eq!(out[1].0, Token::Str("second".into()));
+        assert_eq!(out[2].0, Token::Str("th\nird".into()));
+        assert_eq!(out[3].0, Token::Str(String::new()));
+        assert_eq!(out[4].0, Token::Str(String::new()));
+    }
+
+    #[test]
+    fn string_new_lines() {
+        let buf = r#"
+        "Escape\nNewline" 'Literal
+Newline'
+        "#;
+        let out = lex(buf.as_bytes()).unwrap();
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].0, Token::Str("Escape\nNewline".into()));
+        assert_eq!(out[1].0, Token::Str("Literal\nNewline".into()));
+    }
+
+    #[test]
+    fn string_escapes() {
+        let buf = r#"
+        "New\nline"
+        "\r" "\t" "\\" "\0" "\a"
+        '\n\r\t\0'
+        "#;
+        let out = lex(buf.as_bytes()).unwrap();
+        assert_eq!(out.len(), 7);
+        assert_eq!(out[0].0, Token::Str("New\nline".into()));
+        assert_eq!(out[1].0, Token::Str("\r".into()));
+        assert_eq!(out[2].0, Token::Str("\t".into()));
+        assert_eq!(out[3].0, Token::Str("\\".into()));
+        assert_eq!(out[4].0, Token::Str("\0".into()));
+        assert_eq!(out[5].0, Token::Str("a".into()));
+        assert_eq!(out[6].0, Token::Str("\\n\\r\\t\\0".into()));
     }
 }
