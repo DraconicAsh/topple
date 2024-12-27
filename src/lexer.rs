@@ -30,6 +30,7 @@ pub enum Keyword {
     Print,
     PrintNum,
     PrintSigned,
+    Import,
 }
 
 #[derive(Debug, PartialEq)]
@@ -295,7 +296,29 @@ fn lex_ident(
     line: usize,
     chr: usize,
 ) -> ToppleResult<()> {
-    todo!()
+    if !(c.is_ascii_alphabetic() || *c == '_') {
+        return Err(ToppleError::InvalidChar(line, chr, *c));
+    }
+    let mut s = String::new();
+    s.push(*c);
+    while let Some((_, p)) = iter.peek() {
+        if p.is_ascii_alphanumeric() || *p == '_' {
+            s.push(*p);
+            iter.next();
+        } else {
+            break;
+        }
+    }
+    match s.as_str() {
+        "let" => res.push((Token::Keyword(Keyword::Let), line, chr)),
+        "print" => res.push((Token::Keyword(Keyword::Print), line, chr)),
+        "print_num" => res.push((Token::Keyword(Keyword::PrintNum), line, chr)),
+        "print_signed" => res.push((Token::Keyword(Keyword::PrintSigned), line, chr)),
+        "read" => res.push((Token::Keyword(Keyword::Read), line, chr)),
+        "import" => res.push((Token::Keyword(Keyword::Import), line, chr)),
+        _ => res.push((Token::Ident(s), line, chr)),
+    }
+    Ok(())
 }
 
 fn lex_op(
@@ -409,7 +432,7 @@ mod lexer_tests {
     use super::*;
 
     #[test]
-    fn num_lexer() {
+    fn num_lexing() {
         let buf = "123 0b10110111\n10110000 173456\n0789-394";
         let out = lex(buf.as_bytes()).unwrap();
         let n = (-394 as i64) as u64;
@@ -423,7 +446,7 @@ mod lexer_tests {
     }
 
     #[test]
-    fn string_lexer() {
+    fn string_lexing() {
         let buf = r#"
         "first" 'second'
         'th
@@ -500,5 +523,33 @@ Newline'
         assert_eq!(out[5].0, Token::Op(Op::LessEq));
         assert_eq!(out[6].0, Token::Op(Op::Append));
         assert_eq!(out[7].0, Token::Op(Op::Pop));
+    }
+
+    #[test]
+    fn identifier_lexing() {
+        let buf = "var _var0 var_1 2var _3var";
+        let out = lex(buf.as_bytes()).unwrap();
+        assert_eq!(out.len(), 6);
+        assert_eq!(out[0].0, Token::Ident("var".into()));
+        assert_eq!(out[1].0, Token::Ident("_var0".into()));
+        assert_eq!(out[2].0, Token::Ident("var_1".into()));
+        assert_eq!(out[3].0, Token::Num(Num::Imm(2)));
+        assert_eq!(out[4].0, Token::Ident("var".into()));
+        assert_eq!(out[5].0, Token::Ident("_3var".into()));
+    }
+
+    #[test]
+    fn keyword_lexing() {
+        let buf = "let print print_num print_signed read import\n_let readprint";
+        let out = lex(buf.as_bytes()).unwrap();
+        assert_eq!(out.len(), 8);
+        assert_eq!(out[0].0, Token::Keyword(Keyword::Let));
+        assert_eq!(out[1].0, Token::Keyword(Keyword::Print));
+        assert_eq!(out[2].0, Token::Keyword(Keyword::PrintNum));
+        assert_eq!(out[3].0, Token::Keyword(Keyword::PrintSigned));
+        assert_eq!(out[4].0, Token::Keyword(Keyword::Read));
+        assert_eq!(out[5].0, Token::Keyword(Keyword::Import));
+        assert_eq!(out[6].0, Token::Ident("_let".into()));
+        assert_eq!(out[7].0, Token::Ident("readprint".into()));
     }
 }

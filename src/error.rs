@@ -10,6 +10,7 @@ pub enum ToppleError {
     NumberParseError(usize, usize, Box<dyn Error>),
     EmptyBinaryNumError(usize, usize),
     InvalidOp(usize, usize, char),
+    InvalidChar(usize, usize, char),
 }
 
 impl Display for ToppleError {
@@ -33,6 +34,10 @@ impl Display for ToppleError {
             Self::InvalidOp(line, chr, c) => write!(
                 f,
                 "{line}:{chr} !!INTERNAL BUG!! Lexer tried to parse invalid operator '{c}'"
+            ),
+            Self::InvalidChar(line, chr, c) => write!(
+                f,
+                "{line}:{chr} Invalid character '{c}' cannot be used in an identifier and is not a valid operator"
             ),
         }
     }
