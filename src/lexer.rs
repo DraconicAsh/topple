@@ -16,7 +16,7 @@ pub enum Token {
     Comma,
     Dot,
     SemiColon,
-    Operator(Operator),
+    Op(Op),
     Str(String),
     Num(Num),
     Keyword(Keyword),
@@ -26,8 +26,10 @@ pub enum Token {
 #[derive(Debug, PartialEq)]
 pub enum Keyword {
     Let,
-    Print,
     Read,
+    Print,
+    PrintNum,
+    PrintSigned,
 }
 
 #[derive(Debug, PartialEq)]
@@ -37,9 +39,9 @@ pub enum Num {
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Operator {
+pub enum Op {
     Assign,     // =
-    Plus,       // +
+    Add,        // +
     Sub,        // -
     Mult,       // *
     Div,        // /
@@ -50,12 +52,13 @@ pub enum Operator {
     ShiftLeft,  // <<
     ShiftRight, // >>
     Eq,         // ==
-    InvEq,      // !=
+    NotEq,      // !=
     Greater,    // >
     Less,       // <
     GreaterEq,  // >=
     LessEq,     // <=
     Append,     // ++
+    Pop,        // --
 }
 
 pub fn lex<T: BufRead>(buf: T) -> ToppleResult<TokenStream> {
@@ -117,7 +120,7 @@ pub fn lex<T: BufRead>(buf: T) -> ToppleResult<TokenStream> {
                             lex_op(&mut iter, &c, &mut res, i, j)?;
                         }
                     }
-                    None => res.push((Token::Operator(Operator::Sub), i, j)),
+                    None => res.push((Token::Op(Op::Sub), i, j)),
                 },
                 '=' | '+' | '*' | '/' | '&' | '|' | '!' | '^' | '<' | '>' => {
                     lex_op(&mut iter, &c, &mut res, i, j)?
@@ -302,7 +305,103 @@ fn lex_op(
     line: usize,
     chr: usize,
 ) -> ToppleResult<()> {
-    todo!()
+    match c {
+        '=' => {
+            if let Some((_, p)) = iter.peek() {
+                if *p == '=' {
+                    iter.next();
+                    res.push((Token::Op(Op::Eq), line, chr));
+                    return Ok(());
+                }
+            }
+            res.push((Token::Op(Op::Assign), line, chr));
+            Ok(())
+        }
+        '+' => {
+            if let Some((_, p)) = iter.peek() {
+                if *p == '+' {
+                    iter.next();
+                    res.push((Token::Op(Op::Append), line, chr));
+                    return Ok(());
+                }
+            }
+            res.push((Token::Op(Op::Add), line, chr));
+            Ok(())
+        }
+        '-' => {
+            if let Some((_, p)) = iter.peek() {
+                if *p == '-' {
+                    iter.next();
+                    res.push((Token::Op(Op::Pop), line, chr));
+                    return Ok(());
+                }
+            }
+            res.push((Token::Op(Op::Sub), line, chr));
+            Ok(())
+        }
+        '*' => {
+            res.push((Token::Op(Op::Mult), line, chr));
+            Ok(())
+        }
+        '/' => {
+            res.push((Token::Op(Op::Div), line, chr));
+            Ok(())
+        }
+        '&' => {
+            res.push((Token::Op(Op::BitAnd), line, chr));
+            Ok(())
+        }
+        '|' => {
+            res.push((Token::Op(Op::BitOr), line, chr));
+            Ok(())
+        }
+        '^' => {
+            res.push((Token::Op(Op::BitXor), line, chr));
+            Ok(())
+        }
+        '!' => {
+            if let Some((_, p)) = iter.peek() {
+                if *p == '=' {
+                    iter.next();
+                    res.push((Token::Op(Op::NotEq), line, chr));
+                    return Ok(());
+                }
+            }
+            res.push((Token::Op(Op::BitNot), line, chr));
+            Ok(())
+        }
+        '>' => {
+            if let Some((_, p)) = iter.peek() {
+                if *p == '=' {
+                    iter.next();
+                    res.push((Token::Op(Op::GreaterEq), line, chr));
+                    return Ok(());
+                } else if *p == '>' {
+                    iter.next();
+                    res.push((Token::Op(Op::ShiftRight), line, chr));
+                    return Ok(());
+                }
+            }
+            res.push((Token::Op(Op::Greater), line, chr));
+            Ok(())
+        }
+        '<' => {
+            if let Some((_, p)) = iter.peek() {
+                if *p == '=' {
+                    iter.next();
+                    res.push((Token::Op(Op::LessEq), line, chr));
+                    return Ok(());
+                } else if *p == '<' {
+                    iter.next();
+                    res.push((Token::Op(Op::ShiftLeft), line, chr));
+                    return Ok(());
+                }
+            }
+            res.push((Token::Op(Op::Less), line, chr));
+            Ok(())
+        }
+        _ => Err(ToppleError::InvalidOp(line, chr, *c)),
+    }
 }
 
 #[cfg(test)]
@@ -368,5 +467,38 @@ Newline'
         assert_eq!(out[4].0, Token::Str("\0".into()));
         assert_eq!(out[5].0, Token::Str("a".into()));
         assert_eq!(out[6].0, Token::Str("\\n\\r\\t\\0".into()));
+    }
+
+    #[test]
+    fn ops_single_char() {
+        let buf = "=+-*/&|!^><";
+        let out = lex(buf.as_bytes()).unwrap();
+        assert_eq!(out.len(), 11);
+        assert_eq!(out[0].0, Token::Op(Op::Assign));
+        assert_eq!(out[1].0, Token::Op(Op::Add));
+        assert_eq!(out[2].0, Token::Op(Op::Sub));
+        assert_eq!(out[3].0, Token::Op(Op::Mult));
+        assert_eq!(out[4].0, Token::Op(Op::Div));
+        assert_eq!(out[5].0, Token::Op(Op::BitAnd));
+        assert_eq!(out[6].0, Token::Op(Op::BitOr));
+        assert_eq!(out[7].0, Token::Op(Op::BitNot));
+        assert_eq!(out[8].0, Token::Op(Op::BitXor));
+        assert_eq!(out[9].0, Token::Op(Op::Greater));
+        assert_eq!(out[10].0, Token::Op(Op::Less));
+    }
+
+    #[test]
+    fn ops_multi_char() {
+        let buf = "<<>>==!=>=<=++--";
+        let out = lex(buf.as_bytes()).unwrap();
+        assert_eq!(out.len(), 8);
+        assert_eq!(out[0].0, Token::Op(Op::ShiftLeft));
+        assert_eq!(out[1].0, Token::Op(Op::ShiftRight));
+        assert_eq!(out[2].0, Token::Op(Op::Eq));
+        assert_eq!(out[3].0, Token::Op(Op::NotEq));
+        assert_eq!(out[4].0, Token::Op(Op::GreaterEq));
+        assert_eq!(out[5].0, Token::Op(Op::LessEq));
+        assert_eq!(out[6].0, Token::Op(Op::Append));
+        assert_eq!(out[7].0, Token::Op(Op::Pop));
     }
 }

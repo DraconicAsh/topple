@@ -9,6 +9,7 @@ pub enum ToppleError {
     LineReadError(usize, Box<dyn Error>),
     NumberParseError(usize, usize, Box<dyn Error>),
     EmptyBinaryNumError(usize, usize),
+    InvalidOp(usize, usize, char),
 }
 
 impl Display for ToppleError {
@@ -28,6 +29,10 @@ impl Display for ToppleError {
             Self::EmptyBinaryNumError(line, chr) => write!(
                 f,
                 "{line}:{chr} Binary encoded numbers must have at least 1 digit"
+            ),
+            Self::InvalidOp(line, chr, c) => write!(
+                f,
+                "{line}:{chr} !!INTERNAL BUG!! Lexer tried to parse invalid operator '{c}'"
             ),
         }
     }
