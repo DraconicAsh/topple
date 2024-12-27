@@ -5,63 +5,32 @@ pub type ToppleResult<T> = Result<T, ToppleError>;
 
 #[derive(Debug)]
 pub enum ToppleError {
-    LexerError(LexerError),
+    OpenStringError(usize, usize),
+    LineReadError(usize, Box<dyn Error>),
+    NumberParseError(usize, usize, Box<dyn Error>),
+    EmptyBinaryNumError(usize, usize),
 }
 
 impl Display for ToppleError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::LexerError(e) => write!(f, "{e}"),
+            Self::OpenStringError(line, chr) => write!(
+                f, 
+                "{line}:{chr} Strings must be ended with a double quote (\") and cannot be on multiple lines. Use single quotes (\' \') for Raw Strings"
+            ),
+            Self::LineReadError(line, e) => write!(
+                f,
+                "{line}:_ Lower-Level error while attempting to read line; {e}"
+            ),
+            Self::NumberParseError(line, chr, e) => {
+                write!(f, "{line}:{chr} Lower-Level error when parsing number; {e}")
+            }
+            Self::EmptyBinaryNumError(line, chr) => write!(
+                f,
+                "{line}:{chr} Binary encoded numbers must have at least 1 digit"
+            ),
         }
     }
 }
 
 impl Error for ToppleError {}
-
-#[derive(Debug)]
-pub struct LexerError {
-    txt: String,
-    line: usize,
-    chr: usize,
-    source: Option<Box<dyn Error>>,
-}
-
-impl LexerError {
-    pub fn new<T: ToString>(txt: T, line: usize, chr: usize) -> Self {
-        Self {
-            txt: txt.to_string(),
-            line,
-            chr,
-            source: None,
-        }
-    }
-
-    pub fn source(mut self, err: Box<dyn Error>) -> Self {
-        self.source = Some(err);
-        self
-    }
-
-    pub fn wrap(self) -> ToppleError {
-        ToppleError::LexerError(self)
-    }
-}
-
-impl Display for LexerError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let src_txt = match &self.source {
-            Some(e) => format!("\nTrace: {e}"),
-            None => String::new(),
-        };
-        write!(
-            f,
-            "Lexer Error at Line {}:{}, {}{}",
-            self.line, self.chr, self.txt, src_txt
-        )
-    }
-}
-
-impl Error for LexerError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.source.as_deref()
-    }
-}

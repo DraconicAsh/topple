@@ -1,4 +1,4 @@
-use crate::error::{LexerError, ToppleResult};
+use crate::error::{ToppleError, ToppleResult};
 use std::io::{BufRead, Lines};
 use std::iter::{Enumerate, Peekable};
 use std::str::Chars;
@@ -65,15 +65,7 @@ pub fn lex<T: BufRead>(buf: T) -> ToppleResult<TokenStream> {
     while let Some((i, line)) = buf_iter.next() {
         let line = match line {
             Ok(l) => l,
-            Err(e) => {
-                return Err(LexerError::new(
-                    "Lower-Level error while attempting to read line",
-                    i,
-                    0,
-                )
-                .source(Box::new(e))
-                .wrap())
-            }
+            Err(e) => return Err(ToppleError::LineReadError(i, Box::new(e))),
         };
         let mut iter = line.chars().enumerate().peekable();
         if reading_literal.0 {
@@ -163,13 +155,7 @@ fn lex_num(
                 res.push((Token::Num(Num::Imm(n)), line, chr));
                 return Ok(());
             }
-            Err(e) => {
-                return Err(
-                    LexerError::new("Lower-Level error when parsing number", line, chr)
-                        .source(Box::new(e))
-                        .wrap(),
-                )
-            }
+            Err(e) => return Err(ToppleError::NumberParseError(line, chr, Box::new(e))),
         }
     };
     while let Some((_, p)) = iter.peek() {
@@ -186,11 +172,7 @@ fn lex_num(
                 res.push((Token::Num(Num::Imm(n as u64)), line, chr));
                 Ok(())
             }
-            Err(e) => Err(
-                LexerError::new("Lower-Level error when parsing number", line, chr)
-                    .source(Box::new(e))
-                    .wrap(),
-            ),
+            Err(e) => Err(ToppleError::NumberParseError(line, chr, Box::new(e))),
         }
     } else {
         match num_str.parse::<u64>() {
@@ -198,11 +180,7 @@ fn lex_num(
                 res.push((Token::Num(Num::Imm(n)), line, chr));
                 Ok(())
             }
-            Err(e) => Err(
-                LexerError::new("Lower-Level error when parsing number", line, chr)
-                    .source(Box::new(e))
-                    .wrap(),
-            ),
+            Err(e) => Err(ToppleError::NumberParseError(line, chr, Box::new(e))),
         }
     }
 }
@@ -214,12 +192,7 @@ fn lex_bits(
     chr: usize,
 ) -> ToppleResult<()> {
     if iter.peek().is_none() {
-        return Err(LexerError::new(
-            "Binary encoded numbers must have at least 1 digit",
-            line,
-            chr,
-        )
-        .wrap());
+        return Err(ToppleError::EmptyBinaryNumError(line, chr));
     }
     let mut bin_str = String::new();
     while let Some((_, p)) = iter.peek() {
@@ -231,12 +204,7 @@ fn lex_bits(
         }
     }
     if bin_str.is_empty() {
-        Err(LexerError::new(
-            "Binary encoded numbers must have at least 1 digit",
-            line,
-            chr,
-        )
-        .wrap())
+        Err(ToppleError::EmptyBinaryNumError(line, chr))
     } else {
         res.push((Token::Num(Num::Bits(bin_str)), line, chr));
         Ok(())
@@ -268,12 +236,7 @@ fn lex_string(
                     }
                     return Ok(());
                 } else {
-                    return Err(LexerError::new(
-                        "Strings (\" \") cannot be multiple lines, try a Raw String (' ')?",
-                        line,
-                        chr,
-                    )
-                    .wrap());
+                    return Err(ToppleError::OpenStringError(line, chr));
                 }
             }
         };
@@ -302,14 +265,7 @@ fn lex_string(
             iter.next();
             let p2 = match iter.peek() {
                 Some((_, peek)) => peek,
-                None => {
-                    return Err(LexerError::new(
-                        "Strings (\" \") cannot be multiple lines, tray a Raw String (' ')?",
-                        line,
-                        chr,
-                    )
-                    .wrap())
-                }
+                None => return Err(ToppleError::OpenStringError(line, chr)),
             };
             match *p2 {
                 'n' => s.push('\n'),
