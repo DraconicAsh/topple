@@ -4,6 +4,7 @@ use std::iter::{Enumerate, Peekable};
 use std::str::Chars;
 
 pub type TokenStream = Vec<(Token, usize, usize)>;
+pub type TokenStreamSlice<'a> = &'a [(Token, usize, usize)];
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
