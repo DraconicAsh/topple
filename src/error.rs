@@ -11,6 +11,7 @@ pub enum ToppleError {
     EmptyBinaryNumError(usize, usize),
     InvalidOp(usize, usize, char),
     InvalidChar(usize, usize, char),
+    OpenExprError(usize, usize),
 }
 
 impl Display for ToppleError {
@@ -38,6 +39,10 @@ impl Display for ToppleError {
             Self::InvalidChar(line, chr, c) => write!(
                 f,
                 "{line}:{chr} Invalid character '{c}' cannot be used in an identifier and is not a valid operator"
+            ),
+            Self::OpenExprError(line, chr) => write!(
+                f,
+                "{line}:{chr} All expressions must be ended with a semicolon ';'"
             ),
         }
     }

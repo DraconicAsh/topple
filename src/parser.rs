@@ -1,150 +1,77 @@
+use crate::error::*;
 use crate::lexer::*;
-use crate::ToppleType;
+use crate::types::ToppleType;
 
-pub type AST = Node;
-type Ident = String;
+pub type AST = Vec<Node>;
 
-pub enum Node {
-    EndPoint(Option<Box<Node>>),
-    Expr(Box<Expr>),
-    Index(Box<Node>, Box<Node>),
-    Func(String, Vec<Node>),
-    Block(Box<Node>),
-    Def(Ident),
+pub struct Node {
+    left: Val,
+    right: Option<Val>,
+    node_type: NodeType,
+    line: usize,
+    chr: usize,
 }
 
-pub enum Expr {
+impl Node {
+    fn new_unary(left: Val, node_type: NodeType, line: usize, chr: usize) -> Self {
+        Self {
+            left,
+            right: None,
+            node_type,
+            line,
+            chr,
+        }
+    }
+
+    fn new_binary(left: Val, right: Val, node_type: NodeType, line: usize, chr: usize) -> Self {
+        Self {
+            left,
+            right: Some(right),
+            node_type,
+            line,
+            chr,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum NodeType {
+    Literal,
+    BitNot,
+}
+
+pub enum Val {
     Literal(ToppleType),
-    Paren(Node),
-    Math(Math),
-    BitOp(BitOp),
-    Cmp(Cmp),
-    Append(Node, Node),
-    Pop(Node),
-    Assign(Ident, Node),
+    Ident(String),
+    Node(Box<Node>),
 }
 
-pub enum Math {
-    Mult(Node, Node),
-    Div(Node, Node),
-    Add(Node, Node),
-    Sub(Node, Node),
+impl std::cmp::PartialEq<NodeType> for Node {
+    fn eq(&self, other: &NodeType) -> bool {
+        self.node_type == *other
+    }
 }
 
-pub enum BitOp {
-    BitNot(Node),
-    BitAnd(Node, Node),
-    BitOr(Node, Node),
-    BitXor(Node, Node),
-    ShiftLeft(Node, Node),
-    ShiftRight(Node, Node),
+pub fn parse_tokens(stream: TokenStream) -> ToppleResult<AST> {
+    let mut ast = Vec::new();
+    let mut expr_start = 0;
+    let len = stream.len();
+    while expr_start < len {
+        let mut expr_end = expr_start + 1;
+        while stream[expr_end].0 != Token::SemiColon {
+            expr_end += 1;
+            if expr_end >= len {
+                let (_, line, chr) = stream[len - 1];
+                return Err(ToppleError::OpenExprError(line, chr));
+            }
+        }
+        let node = parse_expr(&stream[expr_start..expr_end])?;
+        ast.push(node);
+        expr_start = expr_end + 1;
+    }
+    Ok(ast)
 }
 
-pub enum Cmp {
-    Eq(Node, Node),
-    NotEq(Node, Node),
-    GreaterEq(Node, Node),
-    LessEq(Node, Node),
-    Greater(Node, Node),
-    Less(Node, Node),
-}
-
-pub struct Parser<'a> {
-    am_block: bool,
-    stream: TokenStreamSlice<'a>,
-}
-
-impl<'a> Parser<'a> {
-    pub fn new(stream: &'a TokenStream) -> Self {
-        Self::new_raw(false, &stream[..])
-    }
-
-    fn new_raw(am_block: bool, stream: TokenStreamSlice<'a>) -> Self {
-        Self { am_block, stream }
-    }
-
-    pub fn parse(&self) -> AST {
-        let mut ast = Node::EndPoint(None);
-        todo!()
-    }
-
-    fn literal(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn parentheses(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn mult(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn div(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn add(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn sub(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn bit_not(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn bit_and(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn bit_or(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn bit_xor(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn shift_left(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn shift_right(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn equals(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn not_equals(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn greater_or_equals(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn less_or_equals(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn greater_than(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn less_than(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn append(pos: usize) -> Expr {
-        todo!()
-    }
-
-    fn pop(pos: usize) -> Expr {
-        todo!()
-    }
+fn parse_expr(expr: TokenStreamSlice) -> ToppleResult<Node> {
+    todo!()
 }
