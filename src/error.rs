@@ -12,6 +12,7 @@ pub enum ToppleError {
     InvalidOp(usize, usize, char),
     InvalidChar(usize, usize, char),
     OpenExprError(usize, usize),
+    HangingLetError(usize, usize),
 }
 
 impl Display for ToppleError {
@@ -43,6 +44,10 @@ impl Display for ToppleError {
             Self::OpenExprError(line, chr) => write!(
                 f,
                 "{line}:{chr} All expressions must be ended with a semicolon ';'"
+            ),
+            Self::HangingLetError(line, chr) => write!(
+            f,
+            "{line}:{chr} 'let' must be followed by a variable name or a name and an assignment"
             ),
         }
     }

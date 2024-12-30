@@ -4,6 +4,7 @@ use crate::types::ToppleType;
 
 pub type AST = Vec<Node>;
 
+#[derive(Debug, PartialEq)]
 pub struct Node {
     left: Val,
     right: Option<Val>,
@@ -38,8 +39,11 @@ impl Node {
 pub enum NodeType {
     Literal,
     BitNot,
+    Assign,
+    Def,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Val {
     Literal(ToppleType),
     Ident(String),
@@ -57,6 +61,16 @@ pub fn parse_tokens(stream: TokenStream) -> ToppleResult<AST> {
     let mut expr_start = 0;
     let len = stream.len();
     while expr_start < len {
+        let (start_token, line, chr) = &stream[expr_start];
+        let is_definition = if *start_token == Token::Keyword(Keyword::Let) {
+            expr_start += 1;
+            if expr_start >= len {
+                return Err(ToppleError::HangingLetError(*line, *chr));
+            }
+            true
+        } else {
+            false
+        };
         let mut expr_end = expr_start + 1;
         while stream[expr_end].0 != Token::SemiColon {
             expr_end += 1;
@@ -66,6 +80,19 @@ pub fn parse_tokens(stream: TokenStream) -> ToppleResult<AST> {
             }
         }
         let node = parse_expr(&stream[expr_start..expr_end])?;
+        if is_definition {
+            let name = match &node.left {
+                Val::Ident(n) => n.clone(),
+                _ => return Err(ToppleError::HangingLetError(node.line, node.chr)),
+            };
+            match node.node_type {
+                NodeType::Assign | NodeType::Literal => {
+                    let n = Node::new_unary(Val::Ident(name), NodeType::Def, *line, *chr);
+                    ast.push(n);
+                }
+                _ => return Err(ToppleError::HangingLetError(node.line, node.chr)),
+            }
+        }
         ast.push(node);
         expr_start = expr_end + 1;
     }
