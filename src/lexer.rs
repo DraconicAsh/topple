@@ -59,7 +59,7 @@ pub enum Op {
     Less,       // <
     GreaterEq,  // >=
     LessEq,     // <=
-    Append,     // ++
+    Push,       // ++
     Pop,        // --
 }
 
@@ -345,7 +345,7 @@ fn lex_op(
             if let Some((_, p)) = iter.peek() {
                 if *p == '+' {
                     iter.next();
-                    res.push((Token::Op(Op::Append), line, chr));
+                    res.push((Token::Op(Op::Push), line, chr));
                     return Ok(());
                 }
             }
@@ -522,7 +522,7 @@ Newline'
         assert_eq!(out[3].0, Token::Op(Op::NotEq));
         assert_eq!(out[4].0, Token::Op(Op::GreaterEq));
         assert_eq!(out[5].0, Token::Op(Op::LessEq));
-        assert_eq!(out[6].0, Token::Op(Op::Append));
+        assert_eq!(out[6].0, Token::Op(Op::Push));
         assert_eq!(out[7].0, Token::Op(Op::Pop));
     }
 
