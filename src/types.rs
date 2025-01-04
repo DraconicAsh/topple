@@ -50,10 +50,28 @@ impl ByteTable {
             Some(i64::from_le_bytes(arr))
         }
     }
+
+    pub fn from_str(s: &str) -> Self {
+        Self {
+            table: s.as_bytes().to_vec(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.table.len()
+    }
 }
 
 impl From<u64> for ByteTable {
     fn from(value: u64) -> Self {
+        Self {
+            table: value.to_le_bytes().to_vec(),
+        }
+    }
+}
+
+impl From<&u64> for ByteTable {
+    fn from(value: &u64) -> Self {
         Self {
             table: value.to_le_bytes().to_vec(),
         }
@@ -72,7 +90,7 @@ impl std::fmt::Display for ByteTable {
         if len == 0 {
             return write!(f, "[]");
         }
-        let mut s = String::with_capacity(len * 3);
+        let mut s = String::with_capacity(len * 10);
         s.push('[');
         let mut i = 0;
         s += &format!("{:08b}", self.table[i]);
@@ -116,6 +134,10 @@ impl BitTable {
         let bit_idx = idx % 8;
         let bit = self.table[byte_idx] & (0b1000_0000 >> bit_idx);
         bit != 0
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
     }
 }
 

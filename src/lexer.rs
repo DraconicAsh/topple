@@ -6,7 +6,7 @@ use std::str::Chars;
 pub type TokenStream = Vec<(Token, usize, usize)>;
 pub type TokenStreamSlice<'a> = &'a [(Token, usize, usize)];
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     LeftParen,
     RightParen,
@@ -24,7 +24,7 @@ pub enum Token {
     Ident(String),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Keyword {
     Let,
     Read,
@@ -34,13 +34,13 @@ pub enum Keyword {
     Import,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Num {
     Imm(u64),
     Bits(String),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Op {
     Assign,     // =
     Add,        // +

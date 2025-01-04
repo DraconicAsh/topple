@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt::Display;
+use crate::lexer::Token;
 
 pub type ToppleResult<T> = Result<T, ToppleError>;
 
@@ -12,7 +13,11 @@ pub enum ToppleError {
     InvalidOp(usize, usize, char),
     InvalidChar(usize, usize, char),
     OpenExprError(usize, usize),
+    OpenBlockError(usize, usize),
+    OpenParenError(usize, usize),
+    OpenBracketError(usize, usize),
     HangingLetError(usize, usize),
+    UnexpectedToken(Token, usize, usize),
 }
 
 impl Display for ToppleError {
@@ -45,10 +50,14 @@ impl Display for ToppleError {
                 f,
                 "{line}:{chr} All expressions must be ended with a semicolon ';'"
             ),
+            Self::OpenBlockError(line, chr) => write!(f, "{line}:{chr} All code block starts '{{' must be ended '}}'"),
+            Self::OpenParenError(line, chr) => write!(f, "{line}:{chr} All open parentheses '(' must be closed ')'"),
+            Self::OpenBracketError(line, chr) => write!(f, "{line}:{chr} All open brackets '[' must be closed ']'"),
             Self::HangingLetError(line, chr) => write!(
             f,
             "{line}:{chr} 'let' must be followed by a variable name or a name and an assignment"
             ),
+            Self::UnexpectedToken(t, line, chr) => write!(f, "{line}:{chr} Unexpected token {t:?}"),
         }
     }
 }
