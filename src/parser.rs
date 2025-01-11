@@ -229,22 +229,44 @@ impl Display for Val {
             },
             Self::Ident(s) => write!(f, "{s}"),
             Self::Node(n) => write!(f, "({n})"),
-            Self::Block(b) => {
-                let mut s = String::with_capacity(b.len() * 16);
-                s.push('{');
-                let mut i = 0;
-                s += &format!("{};", b[i]);
-                i += 1;
-                while i < b.len() {
-                    s.push('\n');
-                    s += &format!("{};", b[i]);
-                }
-                s.push('}');
-                write!(f, "{s}")
-            }
+            Self::Block(b) => write!(f, "{}", block_print(&b, 0)),
             Self::Table(t) => write!(f, "{t:?}"),
         }
     }
+}
+
+fn block_print(block: &AST, depth: usize) -> String {
+    let curly_indent = depth * 4;
+    let indent = (depth + 1) * 4;
+    let mut s = String::new();
+    s += &format!("{:1$}{{\n", "", curly_indent);
+    for n in block.iter() {
+        if let Val::Block(b) = &n.left {
+            s += &block_print(b, depth + 1);
+            s.push('\n');
+        } else {
+            s += &format!("{1:2$}{0}\n", n, "", indent);
+        }
+    }
+    s += &format!("{:1$}}}", "", curly_indent);
+    s
+}
+
+fn block_print_binary(block: &AST, depth: usize) -> String {
+    let curly_indent = depth * 4;
+    let indent = (depth + 1) * 4;
+    let mut s = String::new();
+    s += &format!("{:1$}{{\n", "", curly_indent);
+    for n in block.iter() {
+        if let Val::Block(b) = &n.left {
+            s += &block_print_binary(b, depth + 1);
+            s.push('\n');
+        } else {
+            s += &format!("{1:2$}{0:b}\n", n, "", indent);
+        }
+    }
+    s += &format!("{:1$}}}", "", curly_indent);
+    s
 }
 
 impl Binary for Val {
@@ -253,19 +275,7 @@ impl Binary for Val {
             Self::Literal(l) => write!(f, "{l}"),
             Self::Ident(s) => write!(f, "{s}"),
             Self::Node(n) => write!(f, "({n})"),
-            Self::Block(b) => {
-                let mut s = String::with_capacity(b.len() * 16);
-                s.push('{');
-                let mut i = 0;
-                s += &format!("{:b};", b[i]);
-                i += 1;
-                while i < b.len() {
-                    s.push('\n');
-                    s += &format!("{:b};", b[i]);
-                }
-                s.push('}');
-                write!(f, "{s}")
-            }
+            Self::Block(b) => write!(f, "{}", block_print_binary(&b, 0)),
             Self::Table(t) => write!(f, "{t:?}"),
         }
     }

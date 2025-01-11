@@ -1,28 +1,28 @@
 ident = ("_" / ALPHA) *("_" / ALPHA / DIGIT)
 string = %x22 *(CHAR / %x00) %x22
 literal = 1*DIGIT / string / ident
-table = literal *("," 1*WSP literal)
+table = literal *("," *WSP literal)
 literal =/ "[" table "]"
 
 index = literal / ident "." ident / ident "[" literal "]"
 call = index / (ident / index) "(" table ")"
 
-bit_not = call / "!" call
+bit-not = call / "!" call
 
-mult = bit_not / bit_not "*" mult
+mult = bit-not / bit_not "*" mult
 div = mult / mult "/" div
 mod = div / div "%" mod
 add = mod / mod "+" add
 sub = add / add "-" sub
 
-bit_and = sub / sub "&" bit_and
-bit_or = bit_and / bit_and "|" bit_or
-bit_xor = bit_or / bit_or "^" bit_xor
+bit-and = sub / sub "&" bit_and
+bit-or = bit_and / bit_and "|" bit_or
+bit-xor = bit_or / bit_or "^" bit_xor
 
-shift_left = bit_xor / but_xor "<<" shift_left
-shift_right = shift_left / shift_left ">>" shift_right
+shift-left = bit_xor / but_xor "<<" shift_left
+shift-right = shift_left / shift_left ">>" shift_right
 
-pop = shift_right / shift_right "--"
+pop = shift-right / shift_right "--"
 push = pop / pop "++" 
 
 expr = push / def
