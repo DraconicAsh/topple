@@ -47,6 +47,7 @@ pub enum Op {
     Sub,        // -
     Mult,       // *
     Div,        // /
+    Mod,        // %
     BitAnd,     // &
     BitOr,      // |
     BitNot,     // !
@@ -124,7 +125,7 @@ pub fn lex<T: BufRead>(buf: T) -> ToppleResult<TokenStream> {
                     }
                     None => res.push((Token::Op(Op::Sub), i, j)),
                 },
-                '=' | '+' | '*' | '/' | '&' | '|' | '!' | '^' | '<' | '>' => {
+                '=' | '+' | '*' | '/' | '&' | '|' | '!' | '^' | '<' | '>' | '%' => {
                     lex_op(&mut iter, &c, &mut res, i, j)?
                 }
                 '"' | '\'' => {
@@ -384,6 +385,10 @@ fn lex_op(
         }
         '^' => {
             res.push((Token::Op(Op::BitXor), line, chr));
+            Ok(())
+        }
+        '%' => {
+            res.push((Token::Op(Op::Mod), line, chr));
             Ok(())
         }
         '!' => {

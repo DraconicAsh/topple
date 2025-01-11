@@ -18,6 +18,7 @@ pub enum ToppleError {
     OpenBracketError(usize, usize),
     HangingLetError(usize, usize),
     UnexpectedToken(Token, usize, usize),
+    EmptyIndex(usize, usize),
 }
 
 impl Display for ToppleError {
@@ -58,6 +59,7 @@ impl Display for ToppleError {
             "{line}:{chr} 'let' must be followed by a variable name or a name and an assignment"
             ),
             Self::UnexpectedToken(t, line, chr) => write!(f, "{line}:{chr} Unexpected token {t:?}"),
+            Self::EmptyIndex(line, chr) => write!(f, "{line}:{chr} Index operation requires a value"),
         }
     }
 }

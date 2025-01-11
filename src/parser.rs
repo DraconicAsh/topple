@@ -6,7 +6,7 @@ use std::fmt::{Binary, Display};
 
 pub type AST = Vec<Node>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Node {
     left: Val,
     right: Option<Val>,
@@ -38,7 +38,7 @@ impl Node {
 }
 
 // Ordered from tightest to loosest bind
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum NodeType {
     Literal,
     Index,
@@ -61,7 +61,7 @@ pub enum NodeType {
     Block,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Val {
     Literal(ToppleType),
     Ident(String),
@@ -96,7 +96,7 @@ pub fn parse_tokens(stream: TokenStreamSlice) -> ToppleResult<AST> {
     Ok(ast)
 }
 
-fn parse_table(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+fn parse_table(slice: TokenStreamSlice, idx: &mut usize, end_token: Token) -> ToppleResult<Node> {
     let mut table = Vec::new();
     let mut expr_start = *idx + 1;
     let mut expr_end = expr_start;
@@ -110,7 +110,7 @@ fn parse_table(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
             expr_end += 1;
             expr_start = expr_end;
             table.push(e);
-        } else if *t == Token::RightBracket {
+        } else if *t == end_token {
             if expr_end == expr_start {
                 break;
             }
@@ -158,13 +158,22 @@ fn parse_table(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
 fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
     let (token, line, chr) = &slice[*idx];
     let left = match token {
-        Token::Num(n) => match n {
-            Num::Imm(i) => Val::Literal(ToppleType::ByteTable(i.into())),
-            Num::Bits(s) => Val::Literal(ToppleType::ByteTable(ByteTable::from_bit_str(&s))),
-        },
-        Token::Str(s) => Val::Literal(ToppleType::ByteTable(ByteTable::from_str(&s))),
-        Token::Ident(s) => Val::Ident(s.to_string()),
-        Token::LeftBracket => return parse_table(slice, idx),
+        Token::Num(n) => {
+            *idx += 1;
+            match n {
+                Num::Imm(i) => Val::Literal(ToppleType::ByteTable(i.into())),
+                Num::Bits(s) => Val::Literal(ToppleType::ByteTable(ByteTable::from_bit_str(&s))),
+            }
+        }
+        Token::Str(s) => {
+            *idx += 1;
+            Val::Literal(ToppleType::ByteTable(ByteTable::from_str(&s)))
+        }
+        Token::Ident(s) => {
+            *idx += 1;
+            Val::Ident(s.to_string())
+        }
+        Token::LeftBracket => return parse_table(slice, idx, Token::RightBracket),
         Token::LeftCurly => {
             let mut block_end = *idx + 1;
             let mut inner_blocks = 0;
@@ -185,6 +194,7 @@ fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
                 block_end += 1;
             }
             if block_end == *idx + 1 {
+                *idx = block_end + 1;
                 Val::Block(Vec::new())
             } else {
                 let res = Val::Block(parse_tokens(&slice[(*idx + 1)..block_end])?);
@@ -212,6 +222,7 @@ fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
                 expr_end += 1;
             }
             if expr_end == *idx + 1 {
+                *idx = expr_end + 1;
                 Val::Block(Vec::new())
             } else {
                 let res = parse_expr(&slice[(*idx + 1)..expr_end])?;
@@ -223,6 +234,326 @@ fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
     };
     let n = Node::new_unary(left, NodeType::Literal, *line, *chr);
     Ok(n)
+}
+
+fn parse_index(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let lit = parse_literal(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(lit);
+    }
+    let left = match lit.left {
+        Val::Ident(_) => lit.left.clone(),
+        _ => return Ok(lit),
+    };
+    let (token, line, chr) = &slice[*idx];
+    let right = match token {
+        Token::LeftBracket => {
+            let mut expr_end = *idx + 1;
+            let mut inner_expr = 0;
+            loop {
+                let (t, line, chr) = &slice[expr_end];
+                if expr_end >= slice.len() {
+                    return Err(ToppleError::EmptyIndex(*line, *chr));
+                }
+                if *t == Token::RightBracket {
+                    if inner_expr > 0 {
+                        inner_expr -= 1;
+                    } else {
+                        break;
+                    }
+                } else if *t == Token::LeftBracket {
+                    inner_expr += 1;
+                }
+                expr_end += 1;
+            }
+            if expr_end == *idx + 1 {
+                return Err(ToppleError::EmptyIndex(*line, *chr));
+            } else {
+                let res = parse_expr(&slice[(*idx + 1)..expr_end])?;
+                *idx = expr_end + 1;
+                res
+            }
+        }
+        Token::Dot => {
+            *idx += 1;
+            parse_literal(slice, idx)?
+        }
+        _ => return Ok(lit),
+    };
+    let v = Val::Node(Box::new(right));
+    let n = Node::new_binary(left, v, NodeType::Index, *line, *chr);
+    Ok(n)
+}
+
+fn parse_call(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let index = parse_index(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(index);
+    }
+    let left = if index == NodeType::Index {
+        Val::Node(Box::new(index.clone()))
+    } else {
+        match index.left {
+            Val::Ident(_) => index.left.clone(),
+            _ => return Ok(index),
+        }
+    };
+    let (token, line, chr) = &slice[*idx];
+    let right = match token {
+        Token::LeftParen => {
+            let n = parse_table(slice, idx, Token::RightParen)?;
+            Val::Node(Box::new(n))
+        }
+        _ => return Ok(index),
+    };
+    let n = Node::new_binary(left, right, NodeType::Call, *line, *chr);
+    Ok(n)
+}
+
+fn parse_not(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let (token, line, chr) = &slice[*idx];
+    match token {
+        Token::Op(Op::BitNot) => {
+            *idx += 1;
+            let n = parse_call(slice, idx)?;
+            let v = Val::Node(Box::new(n));
+            let node = Node::new_unary(v, NodeType::BitNot, *line, *chr);
+            Ok(node)
+        }
+        _ => parse_call(slice, idx),
+    }
+}
+
+fn parse_mult(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_not(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::Mult) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_mult(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::Mult, *line, *chr);
+    Ok(node)
+}
+
+fn parse_div(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_mult(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::Div) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_div(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::Div, *line, *chr);
+    Ok(node)
+}
+
+fn parse_mod(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_div(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::Mod) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_mod(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::Mod, *line, *chr);
+    Ok(node)
+}
+
+fn parse_add(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_mod(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::Add) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_add(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::Add, *line, *chr);
+    Ok(node)
+}
+
+fn parse_sub(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_add(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::Sub) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_sub(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::Sub, *line, *chr);
+    Ok(node)
+}
+
+fn parse_and(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_sub(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::BitAnd) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_and(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::BitAnd, *line, *chr);
+    Ok(node)
+}
+
+fn parse_or(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_and(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::BitOr) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_or(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::BitOr, *line, *chr);
+    Ok(node)
+}
+
+fn parse_xor(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_or(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::BitXor) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_xor(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::BitXor, *line, *chr);
+    Ok(node)
+}
+
+fn parse_shift_left(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_xor(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::ShiftLeft) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_shift_left(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::ShiftLeft, *line, *chr);
+    Ok(node)
+}
+
+fn parse_shift_right(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_shift_left(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::ShiftRight) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_shift_right(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::ShiftRight, *line, *chr);
+    Ok(node)
+}
+
+fn parse_pop(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_shift_right(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::Pop) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let v = Val::Node(Box::new(left));
+    let n = Node::new_unary(v, NodeType::Pop, *line, *chr);
+    Ok(n)
+}
+
+fn parse_push(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_pop(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::Push) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_push(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::Push, *line, *chr);
+    Ok(node)
+}
+
+fn parse_assign(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let idx_save = *idx;
+    let index = parse_index(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(index);
+    }
+    let left = if index == NodeType::Index {
+        Val::Node(Box::new(index))
+    } else {
+        match index.left {
+            Val::Ident(_) => index.left,
+            _ => return Ok(index),
+        }
+    };
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::Assign) {
+        *idx = idx_save;
+        return parse_push(slice, idx);
+    }
+    *idx += 1;
+    let right = parse_expr(&slice[*idx..])?;
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::Assign, *line, *chr);
+    Ok(node)
+}
+
+fn parse_def(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    todo!()
 }
 
 fn parse_expr(expr: TokenStreamSlice) -> ToppleResult<Node> {

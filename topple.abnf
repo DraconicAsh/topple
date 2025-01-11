@@ -4,7 +4,7 @@ literal = 1*DIGIT / string / ident
 table = literal *("," *WSP literal)
 literal =/ "[" table "]"
 
-index = literal / ident "." ident / ident "[" literal "]"
+index = literal / ident "." ident / ident "[" expr "]"
 call = index / (ident / index) "(" table ")"
 
 bit-not = call / "!" call
@@ -23,10 +23,10 @@ shift-left = bit_xor / but_xor "<<" shift_left
 shift-right = shift_left / shift_left ">>" shift_right
 
 pop = shift-right / shift_right "--"
-push = pop / pop "++" 
+push = pop / pop "++" push
 
-expr = push / def
-assign = (ident / index) "=" expr
+expr = assign / def
+assign = (ident / index) "=" expr / push
 literal =/ "(" expr ")"
 
 def = assign / %s"let" 1*WSP (ident / index / assign)
