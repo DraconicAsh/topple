@@ -1,6 +1,5 @@
 use crate::error::*;
 use crate::lexer::*;
-use crate::types::BitTable;
 use crate::types::ByteTable;
 use crate::types::ToppleType;
 use std::fmt::{Binary, Display};
@@ -129,12 +128,29 @@ fn parse_table(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
         let n = Node::new_unary(v, NodeType::Literal, line, chr);
         return Ok(n);
     }
+    let mut type_table = true;
+    let mut byte_table = Vec::new();
     let mut simple_table = Vec::new();
     for i in 0..table.len() {
         let node = simplify_expr(&table[i]);
+        if type_table {
+            if let Val::Literal(t) = &node.left {
+                byte_table.push(t.clone());
+            } else {
+                type_table = false;
+                byte_table.clear();
+            }
+        }
         simple_table.push(node);
     }
-    let v = Val::Table(simple_table);
+    let v = if type_table {
+        match ByteTable::try_from_type_vec(byte_table) {
+            Some(b) => Val::Literal(ToppleType::ByteTable(b)),
+            None => Val::Table(simple_table),
+        }
+    } else {
+        Val::Table(simple_table)
+    };
     let n = Node::new_unary(v, NodeType::Literal, line, chr);
     Ok(n)
 }
@@ -144,7 +160,7 @@ fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
     let left = match token {
         Token::Num(n) => match n {
             Num::Imm(i) => Val::Literal(ToppleType::ByteTable(i.into())),
-            Num::Bits(s) => Val::Literal(ToppleType::BitTable(BitTable::from_str(&s))),
+            Num::Bits(s) => Val::Literal(ToppleType::ByteTable(ByteTable::from_bit_str(&s))),
         },
         Token::Str(s) => Val::Literal(ToppleType::ByteTable(ByteTable::from_str(&s))),
         Token::Ident(s) => Val::Ident(s.to_string()),
@@ -343,8 +359,6 @@ impl Binary for Node {
 
 #[cfg(test)]
 mod parser_tests {
-    use crate::types::BitTable;
-
     use super::*;
 
     #[test]
@@ -463,7 +477,7 @@ mod parser_tests {
     }
 
     fn binary_lit(s: &str, line: usize, chr: usize) -> Val {
-        let val = Val::Literal(ToppleType::BitTable(BitTable::from_str(s)));
+        let val = Val::Literal(ToppleType::ByteTable(ByteTable::from_bit_str(s)));
         let node = Node::new_unary(val, NodeType::Literal, line, chr);
         Val::Node(Box::new(node))
     }
