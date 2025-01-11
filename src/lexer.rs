@@ -204,6 +204,9 @@ fn lex_bits(
         if *p == '0' || *p == '1' {
             bin_str.push(*p);
             iter.next();
+        } else if *p == '_' {
+            iter.next();
+            continue;
         } else {
             break;
         }
@@ -434,16 +437,18 @@ mod lexer_tests {
 
     #[test]
     fn num_lexing() {
-        let buf = "123 0b10110111\n10110000 173456\n0789-394";
+        let buf = "123 0b10110111\n10110000 173456\n0789-394 0b0010_1000_23";
         let out = lex(buf.as_bytes()).unwrap();
         let n = (-394 as i64) as u64;
-        assert_eq!(out.len(), 6);
+        assert_eq!(out.len(), 8);
         assert_eq!(out[0].0, Token::Num(Num::Imm(123)));
         assert_eq!(out[1].0, Token::Num(Num::Bits("10110111".into())));
         assert_eq!(out[2].0, Token::Num(Num::Imm(10110000)));
         assert_eq!(out[3].0, Token::Num(Num::Imm(173456)));
         assert_eq!(out[4].0, Token::Num(Num::Imm(789)));
         assert_eq!(out[5].0, Token::Num(Num::Imm(n)));
+        assert_eq!(out[6].0, Token::Num(Num::Bits("00101000".into())));
+        assert_eq!(out[7].0, Token::Num(Num::Imm(23)));
     }
 
     #[test]
