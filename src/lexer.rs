@@ -34,6 +34,20 @@ pub enum Keyword {
     Import,
 }
 
+impl std::fmt::Display for Keyword {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Keyword::Let => "let",
+            Keyword::Read => "read",
+            Keyword::Print => "print",
+            Keyword::PrintNum => "print_num",
+            Keyword::PrintSigned => "print_signed",
+            Keyword::Import => "import",
+        };
+        write!(f, "{s}")
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Num {
     Imm(u64),

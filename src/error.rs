@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fmt::Display;
-use crate::lexer::Token;
+use crate::lexer::{Token, Keyword};
 
 pub type ToppleResult<T> = Result<T, ToppleError>;
 
@@ -19,6 +19,8 @@ pub enum ToppleError {
     HangingLetError(usize, usize),
     UnexpectedToken(Token, usize, usize),
     EmptyIndex(usize, usize),
+    KeywordIsCall(Keyword, usize, usize),
+    ExprPartialParse(usize, usize, usize, usize),
 }
 
 impl Display for ToppleError {
@@ -60,6 +62,31 @@ impl Display for ToppleError {
             ),
             Self::UnexpectedToken(t, line, chr) => write!(f, "{line}:{chr} Unexpected token {t:?}"),
             Self::EmptyIndex(line, chr) => write!(f, "{line}:{chr} Index operation requires a value"),
+            Self::KeywordIsCall(k, line, chr) => write!(f, "{line}:{chr} \"{k}\" is a function and must be called as such"),
+            Self::ExprPartialParse(line, chr, end_l, end_c) => write!(f, "{line}:{chr} Full expression could not be parsed; Stopped at {end_l}:{end_c}"),
+        }
+    }
+}
+
+impl std::cmp::PartialEq for ToppleError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (ToppleError::OpenStringError(..), ToppleError::OpenStringError(..)) |
+            (ToppleError::LineReadError(..), ToppleError::LineReadError(..)) |
+            (ToppleError::NumberParseError(..), ToppleError::NumberParseError(..)) |
+            (ToppleError::EmptyBinaryNumError(..), ToppleError::EmptyBinaryNumError(..)) |
+            (ToppleError::InvalidOp(..), ToppleError::InvalidOp(..)) |
+            (ToppleError::InvalidChar(..), ToppleError::InvalidChar(..)) |
+            (ToppleError::OpenExprError(..), ToppleError::OpenExprError(..)) |
+            (ToppleError::OpenBlockError(..), ToppleError::OpenBlockError(..)) |
+            (ToppleError::OpenParenError(..), ToppleError::OpenParenError(..)) |
+            (ToppleError::OpenBracketError(..), ToppleError::OpenBracketError(..)) |
+            (ToppleError::HangingLetError(..), ToppleError::HangingLetError(..)) |
+            (ToppleError::UnexpectedToken(..), ToppleError::UnexpectedToken(..)) |
+            (ToppleError::KeywordIsCall(..), ToppleError::KeywordIsCall(..)) |
+            (ToppleError::ExprPartialParse(..), ToppleError::ExprPartialParse(..)) |
+            (ToppleError::EmptyIndex(..), ToppleError::EmptyIndex(..)) => true,
+            _ => false,
         }
     }
 }

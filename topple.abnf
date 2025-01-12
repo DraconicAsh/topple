@@ -25,8 +25,9 @@ shift-right = shift_left / shift_left ">>" shift_right
 pop = shift-right / shift_right "--"
 push = pop / pop "++" push
 
-expr = assign / def
+expr = assign
 assign = (ident / index) "=" expr / push
 literal =/ "(" expr ")"
 
-def = assign / %s"let" 1*WSP (ident / index / assign)
+def = %s"let" 1*WSP (ident / index / assign)
+literal =/ def
