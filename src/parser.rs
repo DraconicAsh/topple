@@ -62,6 +62,12 @@ pub enum NodeType {
     ShiftRight,
     Pop,
     Push,
+    CmpGT,
+    CmpLT,
+    CmpGTE,
+    CmpLTE,
+    CmpEQ,
+    CmpNE,
     Assign,
     Def,
     Block,
@@ -83,17 +89,33 @@ impl std::cmp::PartialEq<NodeType> for Node {
     }
 }
 
-pub fn parse_tokens(stream: TokenStreamSlice) -> ToppleResult<AST> {
+pub fn parse_tokens(stream: TokenStream) -> ToppleResult<AST> {
+    parse_tokens_raw(&stream[..])
+}
+
+fn parse_tokens_raw(stream: TokenStreamSlice) -> ToppleResult<AST> {
     let mut ast = Vec::new();
     let mut expr_start = 0;
     let len = stream.len();
     while expr_start < len {
         let mut expr_end = expr_start + 1;
-        while stream[expr_end].0 != Token::SemiColon {
+        let mut open_blocks = 0;
+        loop {
+            let (token, line, chr) = &stream[expr_end];
+            if *token == Token::SemiColon && open_blocks == 0 {
+                break;
+            }
+            if *token == Token::LeftCurly {
+                open_blocks += 1;
+            } else if *token == Token::RightCurly {
+                if open_blocks == 0 {
+                    return Err(ToppleError::UnexpectedToken(Token::RightCurly, *line, *chr));
+                }
+                open_blocks -= 1;
+            }
             expr_end += 1;
             if expr_end >= len {
-                let (_, line, chr) = stream[len - 1];
-                return Err(ToppleError::OpenExprError(line, chr));
+                return Err(ToppleError::OpenExprError(*line, *chr));
             }
         }
         let node = parse_expr(&stream[expr_start..expr_end])?;
@@ -112,12 +134,19 @@ fn parse_table(
     let mut table = Vec::new();
     let mut expr_start = *idx + 1;
     let mut expr_end = expr_start;
+    if expr_start >= slice.len() || expr_end >= slice.len() {
+        let (_, line, chr) = &slice[*idx];
+        return Err(ToppleError::OpenBracketError(*line, *chr));
+    }
     let mut inner_sets = 0;
+    let (_, mut line, mut chr) = &slice[expr_end];
     loop {
-        let (t, line, chr) = &slice[expr_end];
         if expr_start >= slice.len() || expr_end >= slice.len() {
-            return Err(ToppleError::OpenBracketError(*line, *chr));
+            return Err(ToppleError::OpenBracketError(line, chr));
         }
+        let (t, l, c) = &slice[expr_end];
+        line = *l;
+        chr = *c;
         if *t == Token::Comma {
             let e = parse_expr(&slice[expr_start..expr_end])?;
             expr_end += 1;
@@ -221,12 +250,18 @@ fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
         }
         Token::LeftCurly => {
             let mut block_end = *idx + 1;
+            if block_end >= slice.len() {
+                return Err(ToppleError::OpenBlockError(*line, *chr));
+            }
             let mut inner_blocks = 0;
+            let (_, mut line, mut chr) = &slice[block_end];
             loop {
-                let (t, line, chr) = &slice[block_end];
                 if block_end >= slice.len() {
-                    return Err(ToppleError::OpenBlockError(*line, *chr));
+                    return Err(ToppleError::OpenBlockError(line, chr));
                 }
+                let (t, l, c) = &slice[block_end];
+                line = *l;
+                chr = *c;
                 if *t == Token::RightCurly {
                     if inner_blocks > 0 {
                         inner_blocks -= 1;
@@ -242,19 +277,25 @@ fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
                 *idx = block_end + 1;
                 Val::Block(Vec::new())
             } else {
-                let res = Val::Block(parse_tokens(&slice[(*idx + 1)..block_end])?);
+                let res = Val::Block(parse_tokens_raw(&slice[(*idx + 1)..block_end])?);
                 *idx = block_end + 1;
                 res
             }
         }
         Token::LeftParen => {
             let mut expr_end = *idx + 1;
+            if expr_end >= slice.len() {
+                return Err(ToppleError::OpenParenError(*line, *chr));
+            }
             let mut inner_expr = 0;
+            let (_, mut line, mut chr) = &slice[expr_end];
             loop {
-                let (t, line, chr) = &slice[expr_end];
                 if expr_end >= slice.len() {
-                    return Err(ToppleError::OpenParenError(*line, *chr));
+                    return Err(ToppleError::OpenParenError(line, chr));
                 }
+                let (t, l, c) = &slice[expr_end];
+                line = *l;
+                chr = *c;
                 if *t == Token::RightParen {
                     if inner_expr > 0 {
                         inner_expr -= 1;
@@ -300,12 +341,18 @@ fn parse_index(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
     let right = match token {
         Token::LeftBracket => {
             let mut expr_end = *idx + 1;
+            if expr_end >= slice.len() {
+                return Err(ToppleError::EmptyIndex(*line, *chr));
+            }
             let mut inner_expr = 0;
+            let (_, mut line, mut chr) = &slice[expr_end];
             loop {
-                let (t, line, chr) = &slice[expr_end];
                 if expr_end >= slice.len() {
-                    return Err(ToppleError::EmptyIndex(*line, *chr));
+                    return Err(ToppleError::EmptyIndex(line, chr));
                 }
+                let (t, l, c) = &slice[expr_end];
+                line = *l;
+                chr = *c;
                 if *t == Token::RightBracket {
                     if inner_expr > 0 {
                         inner_expr -= 1;
@@ -318,7 +365,7 @@ fn parse_index(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
                 expr_end += 1;
             }
             if expr_end == *idx + 1 {
-                return Err(ToppleError::EmptyIndex(*line, *chr));
+                return Err(ToppleError::EmptyIndex(line, chr));
             } else {
                 let res = parse_expr(&slice[(*idx + 1)..expr_end])?;
                 *idx = expr_end + 1;
@@ -622,6 +669,108 @@ fn parse_push(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
     Ok(node)
 }
 
+fn parse_gt(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_push(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::Greater) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_gt(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::CmpGT, *line, *chr);
+    Ok(node)
+}
+
+fn parse_lt(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_gt(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::Less) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_lt(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::CmpLT, *line, *chr);
+    Ok(node)
+}
+
+fn parse_gte(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_lt(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::GreaterEq) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_gte(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::CmpGTE, *line, *chr);
+    Ok(node)
+}
+
+fn parse_lte(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_gte(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::LessEq) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_lte(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::CmpLTE, *line, *chr);
+    Ok(node)
+}
+
+fn parse_eq(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_lte(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::Eq) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_eq(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::CmpEQ, *line, *chr);
+    Ok(node)
+}
+
+fn parse_ne(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let left = parse_eq(slice, idx)?;
+    if *idx >= slice.len() {
+        return Ok(left);
+    }
+    let (token, line, chr) = &slice[*idx];
+    if *token != Token::Op(Op::NotEq) {
+        return Ok(left);
+    }
+    *idx += 1;
+    let right = parse_ne(slice, idx)?;
+    let left = Val::Node(Box::new(left));
+    let right = Val::Node(Box::new(right));
+    let node = Node::new_binary(left, right, NodeType::CmpNE, *line, *chr);
+    Ok(node)
+}
+
 fn parse_assign(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
     let idx_save = *idx;
     let index = parse_index(slice, idx)?;
@@ -635,18 +784,18 @@ fn parse_assign(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> 
             Val::Ident(_) => index.left,
             _ => {
                 *idx = idx_save;
-                return parse_push(slice, idx);
+                return parse_ne(slice, idx);
             }
         }
     };
     let (token, _, _) = &slice[*idx];
     if *token != Token::Op(Op::Assign) {
         *idx = idx_save;
-        return parse_push(slice, idx);
+        return parse_ne(slice, idx);
     }
     *idx += 1;
     let right = parse_expr(&slice[*idx..])?;
-    *idx += 1;
+    *idx = slice.len();
     let right = Val::Node(Box::new(right));
     let (_, line, chr) = &slice[idx_save];
     let node = Node::new_binary(left, right, NodeType::Assign, *line, *chr);
@@ -757,6 +906,12 @@ impl Display for Node {
             NodeType::ShiftRight => format!("{} >> {}", self.left, right),
             NodeType::Pop => format!("{}--", self.left),
             NodeType::Push => format!("{} ++ {}", self.left, right),
+            NodeType::CmpGT => format!("{} > {}", self.left, right),
+            NodeType::CmpLT => format!("{} < {}", self.left, right),
+            NodeType::CmpGTE => format!("{} >= {}", self.left, right),
+            NodeType::CmpLTE => format!("{} <= {}", self.left, right),
+            NodeType::CmpEQ => format!("{} == {}", self.left, right),
+            NodeType::CmpNE => format!("{} != {}", self.left, right),
             NodeType::Assign => format!("{} = {}", self.left, right),
             NodeType::Def => format!("let {}", self.left),
             NodeType::Block => format!("{}", self.left),
@@ -768,7 +923,7 @@ impl Display for Node {
 impl Binary for Node {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let right = match &self.right {
-            Some(v) => v.to_string(),
+            Some(v) => format!("{v:b}"),
             None => "WARNING: Right side empty".into(),
         };
         let s = match self.node_type {
@@ -788,6 +943,12 @@ impl Binary for Node {
             NodeType::ShiftRight => format!("{:b} >> {}", self.left, right),
             NodeType::Pop => format!("{:b}--", self.left),
             NodeType::Push => format!("{:b} ++ {}", self.left, right),
+            NodeType::CmpGT => format!("{:b} > {}", self.left, right),
+            NodeType::CmpLT => format!("{:b} < {}", self.left, right),
+            NodeType::CmpGTE => format!("{:b} >= {}", self.left, right),
+            NodeType::CmpLTE => format!("{:b} <= {}", self.left, right),
+            NodeType::CmpEQ => format!("{:b} == {}", self.left, right),
+            NodeType::CmpNE => format!("{:b} != {}", self.left, right),
             NodeType::Assign => format!("{:b} = {}", self.left, right),
             NodeType::Def => format!("let {:b}", self.left),
             NodeType::Block => format!("{:b}", self.left),
@@ -804,7 +965,7 @@ mod parser_tests {
     fn math_ops() {
         let buf = "3 + 2 * 5 / 5 - 1;";
         let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(&stream[..]).unwrap();
+        let out = parse_tokens(stream).unwrap();
         assert_eq!(math_node(), out[0]);
     }
 
@@ -812,7 +973,7 @@ mod parser_tests {
     fn bitwise_ops() {
         let buf = "0b1100 ^ 0b0101 & !0b0100 | 0b0100;";
         let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(&stream[..]).unwrap();
+        let out = parse_tokens(stream).unwrap();
         assert_eq!(bitwise_node(), out[0]);
     }
 
@@ -820,7 +981,7 @@ mod parser_tests {
     fn op_order() {
         let buf = "3 + 5 >> 6 / 3;";
         let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(&stream[..]).unwrap();
+        let out = parse_tokens(stream).unwrap();
         assert_eq!(order_node(), out[0]);
     }
 
@@ -828,7 +989,7 @@ mod parser_tests {
     fn def_statement() {
         let buf = "let a; let b = 3;";
         let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(&stream[..]).unwrap();
+        let out = parse_tokens(stream).unwrap();
 
         let def = Node::new_unary(ident("a", 0, 4), NodeType::Def, 0, 0);
         assert_eq!(def, out[0]);
@@ -848,7 +1009,7 @@ mod parser_tests {
     fn def_immediate() {
         let buf = "let 5 = 4;";
         let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(&stream[..]);
+        let out = parse_tokens(stream);
         assert_eq!(Err(ToppleError::HangingLetError(0, 0)), out);
     }
 
@@ -856,7 +1017,7 @@ mod parser_tests {
     fn paren_expr() {
         let buf = "3 * (2 + 4) - 4;";
         let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(&stream[..]).unwrap();
+        let out = parse_tokens(stream).unwrap();
 
         let paren = Node::new_binary(num_lit(2, 0, 5), num_lit(4, 0, 9), NodeType::Add, 0, 5);
         let mult = Node::new_binary(num_lit(3, 0, 0), node_val(paren), NodeType::Mult, 0, 0);
@@ -869,6 +1030,56 @@ mod parser_tests {
         let node = math_node();
         let s = "((3 + ((2 * 5) / 5)) - 1)";
         assert_eq!(s, format!("{node}"));
+    }
+
+    #[test]
+    fn cmp_ops() {
+        let buf = "test_val == 3 > 0 != 0;";
+        let stream = lex(buf.as_bytes()).unwrap();
+        let out = parse_tokens(stream).unwrap();
+        assert_eq!(cmp_node(), out[0]);
+    }
+
+    #[test]
+    fn blocked_ast() {
+        let buf = "let a = {let b = 2; b + 3;};";
+        let stream = lex(buf.as_bytes()).unwrap();
+        let out = parse_tokens(stream).unwrap();
+        assert_eq!(block_node(), out[0]);
+    }
+
+    fn block_node() -> Node {
+        // let a = {let b = 2; b + 3;};
+        let mut block = Vec::new();
+        let b_assign = Node::new_binary(
+            Val::Ident("b".into()),
+            num_lit(2, 0, 17),
+            NodeType::Assign,
+            0,
+            9,
+        );
+        let b_def = Node::new_unary(node_val(b_assign), NodeType::Def, 0, 9);
+        block.push(b_def);
+        let add = Node::new_binary(ident("b", 0, 20), num_lit(3, 0, 24), NodeType::Add, 0, 20);
+        block.push(add);
+        let block = Node::new_unary(Val::Block(block), NodeType::Literal, 0, 8);
+        let a_assign = Node::new_binary(
+            Val::Ident("a".into()),
+            node_val(block),
+            NodeType::Assign,
+            0,
+            0,
+        );
+        let a_def = Node::new_unary(node_val(a_assign), NodeType::Def, 0, 0);
+        a_def
+    }
+
+    fn cmp_node() -> Node {
+        // test_val == 3 > 0 != 0;
+        let gt = Node::new_binary(num_lit(3, 0, 12), num_lit(0, 0, 16), NodeType::CmpGT, 0, 12);
+        let eq = Node::new_binary(ident("test_val", 0, 0), node_val(gt), NodeType::CmpEQ, 0, 0);
+        let ne = Node::new_binary(node_val(eq), num_lit(0, 0, 21), NodeType::CmpNE, 0, 0);
+        ne
     }
 
     fn math_node() -> Node {

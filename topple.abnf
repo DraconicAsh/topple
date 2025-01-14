@@ -25,8 +25,15 @@ shift-right = shift_left / shift_left ">>" shift_right
 pop = shift-right / shift_right "--"
 push = pop / pop "++" push
 
+gt = push / push ">" gt
+lt = gt / gt "<" lt
+gte = lt / lt ">=" gte
+lte = gte / gte "<=" lte
+eq = lte / lte "==" eq
+ne = eq / eq "!=" ne
+
 expr = assign
-assign = (ident / index) "=" expr / push
+assign = (ident / index) "=" expr / ne
 literal =/ "(" expr ")"
 
 def = %s"let" 1*WSP (ident / index / assign)
