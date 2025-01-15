@@ -76,11 +76,32 @@ pub enum NodeType {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Val {
     Literal(ToppleType),
-    Ident(String),
+    Ident(Ident),
     Keyword(Keyword),
     Node(Box<Node>),
     Table(Vec<Node>),
     Block(AST),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Ident {
+    Var(String),
+    Keyword(Keyword),
+}
+
+impl std::convert::From<&str> for Ident {
+    fn from(value: &str) -> Self {
+        Self::Var(value.to_string())
+    }
+}
+
+impl std::fmt::Display for Ident {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Var(s) => write!(f, "{s}"),
+            Self::Keyword(k) => write!(f, "{k}"),
+        }
+    }
 }
 
 impl std::cmp::PartialEq<NodeType> for Node {
@@ -141,10 +162,13 @@ fn parse_table(
     let mut inner_sets = 0;
     let (_, mut line, mut chr) = &slice[expr_end];
     loop {
+        println!("Expr Start: {expr_start}\nExpr End: {expr_end}");
         if expr_start >= slice.len() || expr_end >= slice.len() {
+            println!("Slice: {slice:?}\n");
             return Err(ToppleError::OpenBracketError(line, chr));
         }
         let (t, l, c) = &slice[expr_end];
+        println!("Token: {t:?}\nEnd Token: {end_token:?}\nInner Sets: {inner_sets}\n");
         line = *l;
         chr = *c;
         if *t == Token::Comma {
@@ -178,29 +202,7 @@ fn parse_table(
         let n = Node::new_unary(v, NodeType::Literal, line, chr);
         return Ok(n);
     }
-    let mut type_table = true;
-    let mut byte_table = Vec::new();
-    let mut simple_table = Vec::new();
-    for i in 0..table.len() {
-        let node = simplify_expr(&table[i]);
-        if type_table {
-            if let Val::Literal(t) = &node.left {
-                byte_table.push(t.clone());
-            } else {
-                type_table = false;
-                byte_table.clear();
-            }
-        }
-        simple_table.push(node);
-    }
-    let v = if type_table {
-        match ByteTable::try_from_type_vec(byte_table) {
-            Some(b) => Val::Literal(ToppleType::ByteTable(b)),
-            None => Val::Table(simple_table),
-        }
-    } else {
-        Val::Table(simple_table)
-    };
+    let v = Val::Table(table);
     let n = Node::new_unary(v, NodeType::Literal, line, chr);
     Ok(n)
 }
@@ -243,7 +245,7 @@ fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
         }
         Token::Ident(s) => {
             *idx += 1;
-            Val::Ident(s.to_string())
+            Val::Ident(Ident::Var(s.to_string()))
         }
         Token::LeftBracket => {
             return parse_table(slice, idx, Token::LeftBracket, Token::RightBracket)
@@ -394,7 +396,7 @@ fn parse_keyword(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
     *idx += 1;
     let right = match slice[*idx].0 {
         Token::LeftParen => {
-            let args = match parse_table(slice, idx, Token::RightParen, Token::LeftParen) {
+            let args = match parse_table(slice, idx, Token::LeftParen, Token::RightParen) {
                 Ok(r) => r,
                 Err(e) => {
                     if let ToppleError::OpenBracketError(l, c) = e {
@@ -773,7 +775,13 @@ fn parse_ne(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
 
 fn parse_assign(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
     let idx_save = *idx;
-    let index = parse_index(slice, idx)?;
+    let index = match parse_index(slice, idx) {
+        Ok(i) => i,
+        Err(_) => {
+            *idx = idx_save;
+            return parse_ne(slice, idx);
+        }
+    };
     if *idx >= slice.len() {
         return Ok(index);
     }
@@ -811,10 +819,6 @@ fn parse_expr(expr: TokenStreamSlice) -> ToppleResult<Node> {
         return Err(ToppleError::ExprPartialParse(*line, *chr, *end_l, *end_c));
     }
     Ok(node)
-}
-
-fn simplify_expr(node: &Node) -> Node {
-    todo!()
 }
 
 impl Display for Val {
@@ -1046,6 +1050,153 @@ mod parser_tests {
         let stream = lex(buf.as_bytes()).unwrap();
         let out = parse_tokens(stream).unwrap();
         assert_eq!(block_node(), out[0]);
+    }
+
+    #[test]
+    fn table_def() {
+        let buf = "[0, 3 + 2, x, y,];";
+        let stream = lex(buf.as_bytes()).unwrap();
+        let out = parse_tokens(stream).unwrap();
+        assert_eq!(table_node(), out[0]);
+    }
+
+    #[test]
+    fn index_ops() {
+        let buf = "a.0;\nb[1];\nc.d;\ne[f];";
+        let stream = lex(buf.as_bytes()).unwrap();
+        let out = parse_tokens(stream).unwrap();
+        let test_nodes = index_nodes();
+        assert_eq!(test_nodes[0], out[0]);
+        assert_eq!(test_nodes[1], out[1]);
+        assert_eq!(test_nodes[2], out[2]);
+        assert_eq!(test_nodes[3], out[3]);
+    }
+
+    #[test]
+    fn call_ident() {
+        let buf = "func(0, 3 + 4, a.0, b,);";
+        let stream = lex(buf.as_bytes()).unwrap();
+        let out = parse_tokens(stream).unwrap();
+        assert_eq!(call_node(), out[0]);
+    }
+
+    #[test]
+    fn call_built_in() {
+        let buf = r#"print("Hello!");"#;
+        let stream = lex(buf.as_bytes()).unwrap();
+        let out = parse_tokens(stream).unwrap();
+        assert_eq!(built_in_node(), out[0]);
+    }
+
+    fn built_in_node() -> Node {
+        // print("Hello!");
+        let s = ByteTable::from_str("Hello!");
+        let n = Node::new_unary(
+            Val::Literal(ToppleType::ByteTable(s)),
+            NodeType::Literal,
+            0,
+            6,
+        );
+        let args = Node::new_unary(Val::Table(vec![n]), NodeType::Literal, 0, 6);
+        let call = Node::new_binary(
+            Val::Keyword(Keyword::Print),
+            node_val(args),
+            NodeType::Call,
+            0,
+            0,
+        );
+        call
+    }
+
+    fn call_node() -> Node {
+        // func(0, 3 + 4, a.0, b,);
+        let mut table = Vec::with_capacity(4);
+        let imm = Node::new_unary(
+            Val::Literal(ToppleType::ByteTable(0.into())),
+            NodeType::Literal,
+            0,
+            5,
+        );
+        table.push(imm);
+        let expr = Node::new_binary(num_lit(3, 0, 8), num_lit(4, 0, 12), NodeType::Add, 0, 8);
+        table.push(expr);
+        let index = Node::new_binary(
+            Val::Ident("a".into()),
+            num_lit(0, 0, 17),
+            NodeType::Index,
+            0,
+            15,
+        );
+        table.push(index);
+        let trailing_comma = Node::new_unary(Val::Ident("b".into()), NodeType::Literal, 0, 20);
+        table.push(trailing_comma);
+        let args = Node::new_unary(Val::Table(table), NodeType::Literal, 0, 4);
+        let call = Node::new_binary(
+            Val::Ident("func".into()),
+            node_val(args),
+            NodeType::Call,
+            0,
+            0,
+        );
+        call
+    }
+
+    fn index_nodes() -> AST {
+        // a.0;\nb[1];\nc.d;\ne[f];
+        let mut res = Vec::with_capacity(4);
+        let dot_imm = Node::new_binary(
+            Val::Ident("a".into()),
+            num_lit(0, 0, 2),
+            NodeType::Index,
+            0,
+            0,
+        );
+        res.push(dot_imm);
+        let bracket_imm = Node::new_binary(
+            Val::Ident("b".into()),
+            num_lit(1, 1, 2),
+            NodeType::Index,
+            1,
+            0,
+        );
+        res.push(bracket_imm);
+        let dot_var = Node::new_binary(
+            Val::Ident("c".into()),
+            ident("d", 2, 2),
+            NodeType::Index,
+            2,
+            0,
+        );
+        res.push(dot_var);
+        let bracket_var = Node::new_binary(
+            Val::Ident("e".into()),
+            ident("f", 3, 2),
+            NodeType::Index,
+            3,
+            0,
+        );
+        res.push(bracket_var);
+        res
+    }
+
+    fn table_node() -> Node {
+        // [0, 3 + 2, x, y,];
+        let mut table = Vec::with_capacity(4);
+        let imm = Node::new_unary(
+            Val::Literal(ToppleType::ByteTable(0.into())),
+            NodeType::Literal,
+            0,
+            1,
+        );
+        table.push(imm);
+        let expr = Node::new_binary(num_lit(3, 0, 4), num_lit(2, 0, 8), NodeType::Add, 0, 4);
+        table.push(expr);
+        let ident_x = Node::new_unary(Val::Ident("x".into()), NodeType::Literal, 0, 11);
+        table.push(ident_x);
+        let trailing_comma = Node::new_unary(Val::Ident("y".into()), NodeType::Literal, 0, 14);
+        table.push(trailing_comma);
+        let table = Val::Table(table);
+        Node::new_unary(table, NodeType::Literal, 0, 0)
     }
 
     fn block_node() -> Node {
