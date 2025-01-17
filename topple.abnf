@@ -1,7 +1,7 @@
 ident = ("_" / ALPHA) *("_" / ALPHA / DIGIT)
 string = %x22 *(CHAR / %x00) %x22
 literal = 1*DIGIT / string / ident
-table = literal *("," *WSP literal)
+table = expr *("," *WSP literal)
 literal =/ "[" table "]"
 
 index = literal / ident "." ident / ident "[" expr "]"
