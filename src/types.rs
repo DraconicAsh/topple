@@ -104,8 +104,8 @@ impl From<u64> for ByteTable {
     }
 }
 
-impl From<&u64> for ByteTable {
-    fn from(value: &u64) -> Self {
+impl From<u128> for ByteTable {
+    fn from(value: u128) -> Self {
         Self {
             table: value.to_le_bytes().to_vec(),
         }
@@ -171,7 +171,7 @@ mod type_tests {
         let short = ByteTable { table: vec![1] };
         assert_eq!("[00000001]", format!("{short}"));
 
-        let num = ByteTable::from(64);
+        let num = ByteTable::from(64_u64);
         let s = format!(
             "[01000000, {0:08b}, {0:08b}, {0:08b}, {0:08b}, {0:08b}, {0:08b}, {0:08b}]",
             0

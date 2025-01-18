@@ -120,7 +120,10 @@ fn parse_tokens_raw(stream: TokenStreamSlice) -> ToppleResult<AST> {
     let len = stream.len();
     while expr_start < len {
         let mut expr_end = expr_start + 1;
-        let mut open_blocks = 0;
+        let mut open_blocks = match &stream[expr_start].0 {
+            Token::LeftCurly => 1,
+            _ => 0,
+        };
         loop {
             let (token, line, chr) = &stream[expr_end];
             if *token == Token::SemiColon && open_blocks == 0 {
@@ -232,7 +235,7 @@ fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
         Token::Num(n) => {
             *idx += 1;
             match n {
-                Num::Imm(i) => Val::Literal(ToppleType::ByteTable(i.into())),
+                Num::Imm(i) => Val::Literal(ToppleType::ByteTable(Into::into(*i))),
                 Num::Bits(s) => Val::Literal(ToppleType::ByteTable(ByteTable::from_bit_str(&s))),
             }
         }
@@ -868,47 +871,16 @@ fn block_print(block: &AST, depth: usize) -> String {
     let curly_indent = depth * 4;
     let indent = (depth + 1) * 4;
     let mut s = String::new();
-    s += &format!("{:1$}{{\n", "", curly_indent);
+    s.push('{');
     for n in block.iter() {
         if let Val::Block(b) = &n.left {
             s += &block_print(b, depth + 1);
-            s.push('\n');
         } else {
-            s += &format!("{1:2$}{0}\n", n, "", indent);
+            s += &format!("\n{1:2$}{0}", n, "", indent);
         }
     }
-    s += &format!("{:1$}}}", "", curly_indent);
+    s += &format!("\n{:1$}}}", "", curly_indent);
     s
-}
-
-fn block_print_binary(block: &AST, depth: usize) -> String {
-    let curly_indent = depth * 4;
-    let indent = (depth + 1) * 4;
-    let mut s = String::new();
-    s += &format!("{:1$}{{\n", "", curly_indent);
-    for n in block.iter() {
-        if let Val::Block(b) = &n.left {
-            s += &block_print_binary(b, depth + 1);
-            s.push('\n');
-        } else {
-            s += &format!("{1:2$}{0:b}\n", n, "", indent);
-        }
-    }
-    s += &format!("{:1$}}}", "", curly_indent);
-    s
-}
-
-impl Binary for Val {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Literal(l) => write!(f, "{l}"),
-            Self::Ident(s) => write!(f, "{s}"),
-            Self::Keyword(k) => write!(f, "{k}"),
-            Self::Node(n) => write!(f, "{n}"),
-            Self::Block(b) => write!(f, "{}", block_print_binary(&b, 0)),
-            Self::Table(t) => write!(f, "{t:?}"),
-        }
-    }
 }
 
 impl Display for Node {
@@ -942,44 +914,7 @@ impl Display for Node {
             NodeType::CmpNE => format!("{} != {}", self.left, right),
             NodeType::Assign => format!("{} = {}", self.left, right),
             NodeType::Def => format!("let {}", self.left),
-            NodeType::Block => format!("{}", self.left),
-        };
-        write!(f, "({s})")
-    }
-}
-
-impl Binary for Node {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let right = match &self.right {
-            Some(v) => format!("{v:b}"),
-            None => "WARNING: Right side empty".into(),
-        };
-        let s = match self.node_type {
-            NodeType::Literal => return write!(f, "{:b}", self.left),
-            NodeType::Index => format!("{:b}.{}", self.left, right),
-            NodeType::Call => format!("{:b}({})", self.left, right),
-            NodeType::BitNot => format!("!{:b}", self.left),
-            NodeType::Mult => format!("{:b} * {}", self.left, right),
-            NodeType::Div => format!("{:b} / {}", self.left, right),
-            NodeType::Mod => format!("{:b} % {}", self.left, right),
-            NodeType::Add => format!("{:b} + {}", self.left, right),
-            NodeType::Sub => format!("{:b} - {}", self.left, right),
-            NodeType::BitAnd => format!("{:b} & {}", self.left, right),
-            NodeType::BitOr => format!("{:b} | {}", self.left, right),
-            NodeType::BitXor => format!("{:b} ^ {}", self.left, right),
-            NodeType::ShiftLeft => format!("{:b} << {}", self.left, right),
-            NodeType::ShiftRight => format!("{:b} >> {}", self.left, right),
-            NodeType::Pop => format!("{:b}--", self.left),
-            NodeType::Push => format!("{:b} ++ {}", self.left, right),
-            NodeType::CmpGT => format!("{:b} > {}", self.left, right),
-            NodeType::CmpLT => format!("{:b} < {}", self.left, right),
-            NodeType::CmpGTE => format!("{:b} >= {}", self.left, right),
-            NodeType::CmpLTE => format!("{:b} <= {}", self.left, right),
-            NodeType::CmpEQ => format!("{:b} == {}", self.left, right),
-            NodeType::CmpNE => format!("{:b} != {}", self.left, right),
-            NodeType::Assign => format!("{:b} = {}", self.left, right),
-            NodeType::Def => format!("let {:b}", self.left),
-            NodeType::Block => format!("{:b}", self.left),
+            NodeType::Block => return write!(f, "{}", self.left),
         };
         write!(f, "({s})")
     }
@@ -1100,6 +1035,15 @@ mod parser_tests {
         let node = math_node();
         let s = "((3 + ((2 * 5) / 5)) - 1)";
         assert_eq!(s, format!("{node}"));
+    }
+
+    #[test]
+    fn print_block() {
+        let buf = r"{let a;{let b;};};";
+        let stream = lex(buf.as_bytes()).unwrap();
+        let out = parse_tokens(stream).unwrap();
+        let s = "{\n    (let a){\n        (let b)\n    }\n}";
+        assert_eq!(s, format!("{}", out[0]));
     }
 
     #[test]
