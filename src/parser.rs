@@ -70,6 +70,7 @@ pub enum NodeType {
     CmpNE,
     Assign,
     Def,
+    For,
     Block,
 }
 
@@ -229,6 +230,41 @@ fn parse_def(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
     Ok(node)
 }
 
+fn parse_for(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
+    let (_, for_line, for_chr) = &slice[*idx];
+    *idx += 1;
+    let (token, line, chr) = &slice[*idx];
+    let table = parse_index(slice, idx)?;
+    let left = if table == NodeType::Index {
+        Val::Node(Box::new(table))
+    } else {
+        if table == NodeType::Literal {
+            match table.left {
+                Val::Ident(_) => table.left,
+                _ => return Err(ToppleError::UnexpectedToken(token.clone(), *line, *chr)),
+            }
+        } else {
+            return Err(ToppleError::UnexpectedToken(token.clone(), *line, *chr));
+        }
+    };
+    let (token, line, chr) = &slice[*idx];
+    let block = parse_literal(slice, idx)?;
+    let right = if block == NodeType::Index {
+        Val::Node(Box::new(block))
+    } else {
+        if block == NodeType::Literal {
+            match block.left {
+                Val::Ident(_) | Val::Block(_) => block.left,
+                _ => return Err(ToppleError::UnexpectedToken(token.clone(), *line, *chr)),
+            }
+        } else {
+            return Err(ToppleError::UnexpectedToken(token.clone(), *line, *chr));
+        }
+    };
+    let node = Node::new_binary(left, right, NodeType::For, *for_line, *for_chr);
+    Ok(node)
+}
+
 fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
     let (token, line, chr) = &slice[*idx];
     let left = match token {
@@ -321,6 +357,13 @@ fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
         Token::Keyword(k) => match k {
             Keyword::Let => {
                 return parse_def(slice, idx);
+            }
+            Keyword::For => {
+                return parse_for(slice, idx);
+            }
+            Keyword::Args | Keyword::SelfK => {
+                *idx += 1;
+                Val::Ident(Ident::Keyword(*k))
             }
             _ => return Err(ToppleError::UnexpectedToken(token.clone(), *line, *chr)),
         },
@@ -417,7 +460,7 @@ fn parse_keyword(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
 fn parse_call(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
     match slice[*idx].0 {
         Token::Keyword(k) => match k {
-            Keyword::Let => (),
+            Keyword::Let | Keyword::Args | Keyword::For | Keyword::SelfK => (),
             _ => return parse_keyword(slice, idx),
         },
         _ => (),
@@ -914,6 +957,7 @@ impl Display for Node {
             NodeType::CmpNE => format!("{} != {}", self.left, right),
             NodeType::Assign => format!("{} = {}", self.left, right),
             NodeType::Def => format!("let {}", self.left),
+            NodeType::For => format!("for {} {}", self.left, right),
             NodeType::Block => return write!(f, "{}", self.left),
         };
         write!(f, "({s})")
@@ -952,8 +996,7 @@ mod parser_tests {
     #[test]
     fn math_ops() {
         let buf = "3 + 2 * 5 / 5 - 1;";
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream).unwrap();
+        let out = parse_test_input(buf);
         assert_eq!(math_node(), out[0]);
     }
 
@@ -968,8 +1011,7 @@ mod parser_tests {
     #[test]
     fn bitwise_ops() {
         let buf = "0b1100 ^ 0b0101 & !0b0100 | 0b0100;";
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream).unwrap();
+        let out = parse_test_input(buf);
         assert_eq!(bitwise_node(), out[0]);
     }
 
@@ -984,8 +1026,7 @@ mod parser_tests {
     #[test]
     fn op_order() {
         let buf = "3 + 5 >> 6 / 3;";
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream).unwrap();
+        let out = parse_test_input(buf);
         assert_eq!(order_node(), out[0]);
     }
 
@@ -999,8 +1040,7 @@ mod parser_tests {
     #[test]
     fn def_statement() {
         let buf = "let a; let b = 3;";
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream).unwrap();
+        let out = parse_test_input(buf);
 
         let def = Node::new_unary("a".into(), NodeType::Def, 0, 0);
         assert_eq!(def, out[0]);
@@ -1021,8 +1061,7 @@ mod parser_tests {
     #[test]
     fn paren_expr() {
         let buf = "3 * (2 + 4) - 4;";
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream).unwrap();
+        let out = parse_test_input(buf);
 
         let paren = Node::new_binary(2.into(), 4.into(), NodeType::Add, 0, 5);
         let mult = Node::new_binary(3.into(), paren.into(), NodeType::Mult, 0, 0);
@@ -1040,8 +1079,7 @@ mod parser_tests {
     #[test]
     fn print_block() {
         let buf = r"{let a;{let b;};};";
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream).unwrap();
+        let out = parse_test_input(buf);
         let s = "{\n    (let a){\n        (let b)\n    }\n}";
         assert_eq!(s, format!("{}", out[0]));
     }
@@ -1049,8 +1087,7 @@ mod parser_tests {
     #[test]
     fn cmp_ops() {
         let buf = "test_val == 3 > 0 != 0;";
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream).unwrap();
+        let out = parse_test_input(buf);
         assert_eq!(cmp_node(), out[0]);
     }
 
@@ -1064,8 +1101,7 @@ mod parser_tests {
     #[test]
     fn blocked_ast() {
         let buf = "let a = {let b = 2; b + 3;};";
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream).unwrap();
+        let out = parse_test_input(buf);
         assert_eq!(block_node(), out[0]);
     }
 
@@ -1084,8 +1120,7 @@ mod parser_tests {
     #[test]
     fn table_def() {
         let buf = "[0, 3 + 2, x, y,];";
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream).unwrap();
+        let out = parse_test_input(buf);
         assert_eq!(table_node(), out[0]);
     }
 
@@ -1106,8 +1141,7 @@ mod parser_tests {
     #[test]
     fn index_ops() {
         let buf = "a.0;\nb[1];\nc.d;\ne[f];";
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream).unwrap();
+        let out = parse_test_input(buf);
         let test_nodes = index_nodes();
         assert_eq!(test_nodes[0], out[0]);
         assert_eq!(test_nodes[1], out[1]);
@@ -1131,8 +1165,7 @@ mod parser_tests {
     #[test]
     fn call_ident() {
         let buf = "func(0, 3 + 4, a.0, b,);";
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream).unwrap();
+        let out = parse_test_input(buf);
         assert_eq!(call_node(), out[0]);
     }
 
@@ -1153,8 +1186,7 @@ mod parser_tests {
     #[test]
     fn call_built_in() {
         let buf = r#"print("Hello!");"#;
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream).unwrap();
+        let out = parse_test_input(buf);
         assert_eq!(built_in_node(), out[0]);
     }
 
@@ -1171,6 +1203,98 @@ mod parser_tests {
             0,
         );
         call
+    }
+
+    #[test]
+    fn pop_and_push() {
+        let buf = "tab--;\ntab ++ 2010;";
+        let out = parse_test_input(buf);
+
+        let pop = Node::new_unary("tab".into(), NodeType::Pop, 0, 0);
+        assert_eq!(pop, out[0]);
+
+        let push = Node::new_binary("tab".into(), 2010.into(), NodeType::Push, 1, 0);
+        assert_eq!(push, out[1]);
+    }
+
+    #[test]
+    fn for_loop() {
+        let buf = "for tab {other_tab ++ args[0];};";
+        let out = parse_test_input(buf);
+        assert_eq!(for_node(), out[0]);
+    }
+
+    fn for_node() -> Node {
+        let index = Node::new_binary(
+            Val::Ident(Ident::Keyword(Keyword::Args)),
+            0.into(),
+            NodeType::Index,
+            0,
+            22,
+        );
+        let push = Node::new_binary("other_tab".into(), index.into(), NodeType::Push, 0, 9);
+        let block = vec![push];
+        let for_loop = Node::new_binary("tab".into(), Val::Block(block), NodeType::For, 0, 0);
+        for_loop
+    }
+
+    #[test]
+    fn args_and_self() {
+        let buf = "args[0] ++ self;";
+        let out = parse_test_input(buf);
+
+        let args = Node::new_binary(
+            Val::Ident(Ident::Keyword(Keyword::Args)),
+            0.into(),
+            NodeType::Index,
+            0,
+            0,
+        );
+        let push = Node::new_binary(
+            args.into(),
+            Val::Ident(Ident::Keyword(Keyword::SelfK)),
+            NodeType::Push,
+            0,
+            0,
+        );
+        assert_eq!(push, out[0]);
+    }
+
+    #[test]
+    fn recursive_self() {
+        let buf = "self(args[0] - 1);";
+        let out = parse_test_input(buf);
+        assert_eq!(recursive_node(), out[0]);
+    }
+
+    fn recursive_node() -> Node {
+        let args = Node::new_binary(
+            Val::Ident(Ident::Keyword(Keyword::Args)),
+            0.into(),
+            NodeType::Index,
+            0,
+            5,
+        );
+        let sub = Node::new_binary(args.into(), 1.into(), NodeType::Sub, 0, 5);
+        let call = Node::new_binary(
+            Val::Ident(Ident::Keyword(Keyword::SelfK)),
+            Val::Table(vec![sub]),
+            NodeType::Call,
+            0,
+            0,
+        );
+        call
+    }
+
+    fn parse_test_input(input: &str) -> AST {
+        let stream = match lex(input.as_bytes()) {
+            Ok(s) => s,
+            Err(e) => panic!("{e}"),
+        };
+        match parse_tokens(stream) {
+            Ok(t) => t,
+            Err(e) => panic!("{e}"),
+        }
     }
 
     fn binary_lit(s: &str) -> Val {
