@@ -1051,11 +1051,10 @@ mod parser_tests {
     }
 
     #[test]
+    #[should_panic(expected = "'let' must be followed by a variable name")]
     fn def_immediate() {
         let buf = "let 5 = 4;";
-        let stream = lex(buf.as_bytes()).unwrap();
-        let out = parse_tokens(stream);
-        assert_eq!(Err(ToppleError::HangingLetError(0, 0)), out);
+        parse_test_input(buf);
     }
 
     #[test]
