@@ -28,42 +28,42 @@ impl Display for ToppleError {
         match self {
             Self::OpenStringError(line, chr) => write!(
                 f, 
-                "{line}:{chr} Strings must be ended with a double quote (\") and cannot be on multiple lines. Use single quotes (\' \') for Raw Strings"
+                "{}:{} Strings must be ended with a double quote (\") and cannot be on multiple lines. Use single quotes (\' \') for Raw Strings", line + 1, chr + 1
             ),
             Self::LineReadError(line, e) => write!(
                 f,
-                "{line}:_ Lower-Level error while attempting to read line; {e}"
+                "{}:_ Lower-Level error while attempting to read line; {e}", line + 1
             ),
             Self::NumberParseError(line, chr, e) => {
-                write!(f, "{line}:{chr} Lower-Level error when parsing number; {e}")
+                write!(f, "{}:{} Lower-Level error when parsing number; {e}", line + 1, chr + 1)
             }
             Self::EmptyBinaryNumError(line, chr) => write!(
                 f,
-                "{line}:{chr} Binary encoded numbers must have at least 1 digit"
+                "{}:{} Binary encoded numbers must have at least 1 digit", line + 1, chr + 1
             ),
             Self::InvalidOp(line, chr, c) => write!(
                 f,
-                "{line}:{chr} !!INTERNAL BUG!! Lexer tried to parse invalid operator '{c}'"
+                "{}:{} !!INTERNAL BUG!! Lexer tried to parse invalid operator '{c}'", line + 1, chr + 1
             ),
             Self::InvalidChar(line, chr, c) => write!(
                 f,
-                "{line}:{chr} Invalid character '{c}' cannot be used in an identifier and is not a valid operator"
+                "{}:{} Invalid character '{c}' cannot be used in an identifier and is not a valid operator", line + 1, chr + 1
             ),
             Self::OpenExprError(line, chr) => write!(
                 f,
-                "{line}:{chr} All expressions must be ended with a semicolon ';'"
+                "{}:{} All expressions must be ended with a semicolon ';'", line + 1, chr + 1
             ),
-            Self::OpenBlockError(line, chr) => write!(f, "{line}:{chr} All code block starts '{{' must be ended '}}'"),
-            Self::OpenParenError(line, chr) => write!(f, "{line}:{chr} All open parentheses '(' must be closed ')'"),
-            Self::OpenBracketError(line, chr) => write!(f, "{line}:{chr} All open brackets '[' must be closed ']'"),
+            Self::OpenBlockError(line, chr) => write!(f, "{}:{} All code block starts '{{' must be ended '}}'", line + 1, chr + 1),
+            Self::OpenParenError(line, chr) => write!(f, "{}:{} All open parentheses '(' must be closed ')'", line + 1, chr + 1),
+            Self::OpenBracketError(line, chr) => write!(f, "{}:{} All open brackets '[' must be closed ']'", line + 1, chr + 1),
             Self::HangingLetError(line, chr) => write!(
             f,
-            "{line}:{chr} 'let' must be followed by a variable name or a name and an assignment"
+            "{}:{} 'let' must be followed by a variable name or a name and an assignment", line + 1, chr + 1
             ),
-            Self::UnexpectedToken(t, line, chr) => write!(f, "{line}:{chr} Unexpected token {t:?}"),
-            Self::EmptyIndex(line, chr) => write!(f, "{line}:{chr} Index operation requires a value"),
-            Self::KeywordIsCall(k, line, chr) => write!(f, "{line}:{chr} \"{k}\" is a function and must be called as such"),
-            Self::ExprPartialParse(line, chr, end_l, end_c) => write!(f, "{line}:{chr} Full expression could not be parsed; Stopped at {end_l}:{end_c}"),
+            Self::UnexpectedToken(t, line, chr) => write!(f, "{}:{} Unexpected token {t:?}", line + 1, chr + 1),
+            Self::EmptyIndex(line, chr) => write!(f, "{}:{} Index operation requires a value", line + 1, chr + 1),
+            Self::KeywordIsCall(k, line, chr) => write!(f, "{}:{} \"{k}\" is a function and must be called as such", line + 1, chr + 1),
+            Self::ExprPartialParse(line, chr, end_l, end_c) => write!(f, "{}:{} Full expression could not be parsed; Stopped at {end_l}:{end_c}", line + 1, chr + 1),
         }
     }
 }
