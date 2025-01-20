@@ -1,9 +1,11 @@
+use crate::parser::block_print;
+use crate::parser::AST;
 use std::convert::From;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ToppleType {
     ByteTable(ByteTable),
-    InstrTable,
+    InstrTable(AST),
     VariantTable(Vec<ToppleType>),
 }
 
@@ -11,7 +13,7 @@ impl std::fmt::Display for ToppleType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ByteTable(t) => write!(f, "{t}"),
-            Self::InstrTable => write!(f, ""),
+            Self::InstrTable(t) => write!(f, "{}", block_print(t, 0)),
             Self::VariantTable(t) => write!(f, "{t:?}"),
         }
     }

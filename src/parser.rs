@@ -2,7 +2,7 @@ use crate::error::*;
 use crate::lexer::*;
 use crate::types::ByteTable;
 use crate::types::ToppleType;
-use std::fmt::{Binary, Display};
+use std::fmt::Display;
 
 pub type AST = Vec<Node>;
 
@@ -16,7 +16,7 @@ pub struct Node {
 }
 
 impl Node {
-    fn new_unary(left: Val, node_type: NodeType, line: usize, chr: usize) -> Self {
+    pub fn new_unary(left: Val, node_type: NodeType, line: usize, chr: usize) -> Self {
         Self {
             left,
             right: None,
@@ -26,7 +26,7 @@ impl Node {
         }
     }
 
-    fn new_binary(left: Val, right: Val, node_type: NodeType, line: usize, chr: usize) -> Self {
+    pub fn new_binary(left: Val, right: Val, node_type: NodeType, line: usize, chr: usize) -> Self {
         Self {
             left,
             right: Some(right),
@@ -34,6 +34,18 @@ impl Node {
             line,
             chr,
         }
+    }
+
+    pub fn left(&self) -> &Val {
+        &self.left
+    }
+
+    pub fn right(&self) -> Option<&Val> {
+        self.right.as_ref()
+    }
+
+    pub fn pos(&self) -> (usize, usize) {
+        (self.line, self.chr)
     }
 }
 
@@ -76,7 +88,7 @@ pub enum NodeType {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Val {
-    Literal(ToppleType),
+    ByteTable(ByteTable),
     Ident(Ident),
     Keyword(Keyword),
     Node(Box<Node>),
@@ -271,13 +283,13 @@ fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
         Token::Num(n) => {
             *idx += 1;
             match n {
-                Num::Imm(i) => Val::Literal(ToppleType::ByteTable(Into::into(*i))),
-                Num::Bits(s) => Val::Literal(ToppleType::ByteTable(ByteTable::from_bit_str(&s))),
+                Num::Imm(i) => Val::ByteTable(Into::into(*i)),
+                Num::Bits(s) => Val::ByteTable(ByteTable::from_bit_str(&s)),
             }
         }
         Token::Str(s) => {
             *idx += 1;
-            Val::Literal(ToppleType::ByteTable(ByteTable::from_str(&s)))
+            Val::ByteTable(ByteTable::from_str(&s))
         }
         Token::Ident(s) => {
             *idx += 1;
@@ -866,7 +878,6 @@ fn parse_expr(expr: TokenStreamSlice) -> ToppleResult<Node> {
 }
 
 fn make_literals_direct(node: &mut Node) {
-    let left = node.left.clone();
     match node.left {
         Val::Node(ref mut n) => {
             if **n == NodeType::Literal {
@@ -894,12 +905,9 @@ fn make_literals_direct(node: &mut Node) {
 impl Display for Val {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Literal(l) => match l {
-                ToppleType::ByteTable(t) => match t.as_unsigned() {
-                    Some(n) => write!(f, "{n}"),
-                    None => write!(f, "{t}"),
-                },
-                _ => write!(f, "{l}"),
+            Self::ByteTable(t) => match t.as_unsigned() {
+                Some(n) => write!(f, "{n}"),
+                None => write!(f, "{t}"),
             },
             Self::Ident(s) => write!(f, "{s}"),
             Self::Keyword(k) => write!(f, "{k}"),
@@ -910,7 +918,7 @@ impl Display for Val {
     }
 }
 
-fn block_print(block: &AST, depth: usize) -> String {
+pub(crate) fn block_print(block: &AST, depth: usize) -> String {
     let curly_indent = depth * 4;
     let indent = (depth + 1) * 4;
     let mut s = String::new();
@@ -971,7 +979,7 @@ mod parser_tests {
 
     impl From<u64> for Val {
         fn from(value: u64) -> Self {
-            Val::Literal(ToppleType::ByteTable(value.into()))
+            Val::ByteTable(value.into())
         }
     }
 
@@ -1191,7 +1199,7 @@ mod parser_tests {
 
     fn built_in_node() -> Node {
         let s = ByteTable::from_str("Hello!");
-        let v = Val::Literal(ToppleType::ByteTable(s));
+        let v = Val::ByteTable(s);
         let n = Node::new_unary(v, NodeType::Literal, 0, 6);
         let table: AST = vec![n];
         let call = Node::new_binary(
@@ -1297,6 +1305,6 @@ mod parser_tests {
     }
 
     fn binary_lit(s: &str) -> Val {
-        Val::Literal(ToppleType::ByteTable(ByteTable::from_bit_str(s)))
+        Val::ByteTable(ByteTable::from_bit_str(s))
     }
 }
