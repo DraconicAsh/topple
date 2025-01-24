@@ -80,7 +80,6 @@ pub enum NodeType {
     CmpEQ,
     CmpNE,
     Assign,
-    Def,
     For,
     Block,
 }
@@ -219,28 +218,6 @@ fn parse_table(
     Ok(n)
 }
 
-fn parse_def(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
-    let (_, line, chr) = &slice[*idx];
-    *idx += 1;
-    if *idx >= slice.len() {
-        return Err(ToppleError::HangingLetError(*line, *chr));
-    }
-    let left = parse_assign(slice, idx)?;
-    if left != NodeType::Assign {
-        if left == NodeType::Literal {
-            match left.left {
-                Val::Ident(_) => (),
-                _ => return Err(ToppleError::HangingLetError(*line, *chr)),
-            }
-        } else if left != NodeType::Index {
-            return Err(ToppleError::HangingLetError(*line, *chr));
-        }
-    }
-    let left = Val::Node(Box::new(left));
-    let node = Node::new_unary(left, NodeType::Def, *line, *chr);
-    Ok(node)
-}
-
 fn parse_for(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
     let (_, for_line, for_chr) = &slice[*idx];
     *idx += 1;
@@ -366,9 +343,6 @@ fn parse_literal(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
             }
         }
         Token::Keyword(k) => match k {
-            Keyword::Let => {
-                return parse_def(slice, idx);
-            }
             Keyword::For => {
                 return parse_for(slice, idx);
             }
@@ -471,7 +445,7 @@ fn parse_keyword(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node>
 fn parse_call(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
     match slice[*idx].0 {
         Token::Keyword(k) => match k {
-            Keyword::Let | Keyword::Args | Keyword::For | Keyword::SelfK => (),
+            Keyword::Args | Keyword::For | Keyword::SelfK => (),
             _ => return parse_keyword(slice, idx),
         },
         _ => (),
@@ -963,7 +937,6 @@ impl Display for Node {
             NodeType::CmpEQ => format!("{} == {}", self.left, right),
             NodeType::CmpNE => format!("{} != {}", self.left, right),
             NodeType::Assign => format!("{} = {}", self.left, right),
-            NodeType::Def => format!("let {}", self.left),
             NodeType::For => format!("for {} {}", self.left, right),
             NodeType::Block => return write!(f, "{}", self.left),
         };
@@ -1045,26 +1018,6 @@ mod parser_tests {
     }
 
     #[test]
-    fn def_statement() {
-        let buf = "let a; let b = 3;";
-        let out = parse_test_input(buf);
-
-        let def = Node::new_unary("a".into(), NodeType::Def, 0, 0);
-        assert_eq!(def, out[0]);
-
-        let assign = Node::new_binary("b".into(), 3.into(), NodeType::Assign, 0, 11);
-        let def_assign = Node::new_unary(assign.into(), NodeType::Def, 0, 7);
-        assert_eq!(def_assign, out[1]);
-    }
-
-    #[test]
-    #[should_panic(expected = "'let' must be followed by a variable name")]
-    fn def_immediate() {
-        let buf = "let 5 = 4;";
-        parse_test_input(buf);
-    }
-
-    #[test]
     fn paren_expr() {
         let buf = "3 * (2 + 4) - 4;";
         let out = parse_test_input(buf);
@@ -1084,9 +1037,9 @@ mod parser_tests {
 
     #[test]
     fn print_block() {
-        let buf = r"{let a;{let b;};};";
+        let buf = r"{a * 2;{b / 3;};};";
         let out = parse_test_input(buf);
-        let s = "{\n    (let a){\n        (let b)\n    }\n}";
+        let s = "{\n    (a * 2){\n        (b / 3)\n    }\n}";
         assert_eq!(s, format!("{}", out[0]));
     }
 
@@ -1106,7 +1059,7 @@ mod parser_tests {
 
     #[test]
     fn blocked_ast() {
-        let buf = "let a = {let b = 2; b + 3;};";
+        let buf = "a = {b = 2; b + 3;};";
         let out = parse_test_input(buf);
         assert_eq!(block_node(), out[0]);
     }
@@ -1114,13 +1067,11 @@ mod parser_tests {
     fn block_node() -> Node {
         let mut block = Vec::with_capacity(2);
         let b_assign = Node::new_binary("b".into(), 2.into(), NodeType::Assign, 0, 13);
-        let b_def = Node::new_unary(b_assign.into(), NodeType::Def, 0, 9);
-        block.push(b_def);
+        block.push(b_assign);
         let add = Node::new_binary("b".into(), 3.into(), NodeType::Add, 0, 20);
         block.push(add);
         let a_assign = Node::new_binary("a".into(), Val::Block(block), NodeType::Assign, 0, 4);
-        let a_def = Node::new_unary(a_assign.into(), NodeType::Def, 0, 0);
-        a_def
+        a_assign
     }
 
     #[test]
@@ -1191,7 +1142,7 @@ mod parser_tests {
 
     #[test]
     fn call_anonymous() {
-        let buf = "{let x = args[0] * 3; x + args[1];}(3, 1);";
+        let buf = "{x = args[0] * 3; x + args[1];}(3, 1);";
         let out = parse_test_input(buf);
         assert_eq!(anonymous_node(), out[0]);
     }
@@ -1202,8 +1153,7 @@ mod parser_tests {
         let index = Node::new_binary(args.clone(), 0.into(), NodeType::Index, 0, 9);
         let mult = Node::new_binary(index.into(), 3.into(), NodeType::Mult, 0, 9);
         let assign = Node::new_binary("x".into(), mult.into(), NodeType::Assign, 0, 5);
-        let def = Node::new_unary(assign.into(), NodeType::Def, 0, 1);
-        block.push(def);
+        block.push(assign);
         let index = Node::new_binary(args, 1.into(), NodeType::Index, 0, 26);
         let add = Node::new_binary("x".into(), index.into(), NodeType::Add, 0, 22);
         block.push(add);

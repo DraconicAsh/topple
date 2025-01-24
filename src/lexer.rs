@@ -26,7 +26,6 @@ pub enum Token {
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Keyword {
-    Let,
     For,
     Args,
     SelfK,
@@ -40,7 +39,6 @@ pub enum Keyword {
 impl std::fmt::Display for Keyword {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            Keyword::Let => "let",
             Keyword::For => "for",
             Keyword::Args => "args",
             Keyword::SelfK => "self",
@@ -335,7 +333,6 @@ fn lex_ident(
         }
     }
     match s.as_str() {
-        "let" => res.push((Token::Keyword(Keyword::Let), line, chr)),
         "for" => res.push((Token::Keyword(Keyword::For), line, chr)),
         "args" => res.push((Token::Keyword(Keyword::Args), line, chr)),
         "self" => res.push((Token::Keyword(Keyword::SelfK), line, chr)),
@@ -574,19 +571,18 @@ Newline'
 
     #[test]
     fn keyword_lexing() {
-        let buf = "let print print_num print_signed read import\n_let readprint\nfor args self";
+        let buf = "print print_num print_signed read import\n_print readprint\nfor args self";
         let out = lex(buf.as_bytes()).unwrap();
-        assert_eq!(out.len(), 11);
-        assert_eq!(out[0].0, Token::Keyword(Keyword::Let));
-        assert_eq!(out[1].0, Token::Keyword(Keyword::Print));
-        assert_eq!(out[2].0, Token::Keyword(Keyword::PrintNum));
-        assert_eq!(out[3].0, Token::Keyword(Keyword::PrintSigned));
-        assert_eq!(out[4].0, Token::Keyword(Keyword::Read));
-        assert_eq!(out[5].0, Token::Keyword(Keyword::Import));
-        assert_eq!(out[6].0, Token::Ident("_let".into()));
-        assert_eq!(out[7].0, Token::Ident("readprint".into()));
-        assert_eq!(out[8].0, Token::Keyword(Keyword::For));
-        assert_eq!(out[9].0, Token::Keyword(Keyword::Args));
-        assert_eq!(out[10].0, Token::Keyword(Keyword::SelfK));
+        assert_eq!(out.len(), 10);
+        assert_eq!(out[0].0, Token::Keyword(Keyword::Print));
+        assert_eq!(out[1].0, Token::Keyword(Keyword::PrintNum));
+        assert_eq!(out[2].0, Token::Keyword(Keyword::PrintSigned));
+        assert_eq!(out[3].0, Token::Keyword(Keyword::Read));
+        assert_eq!(out[4].0, Token::Keyword(Keyword::Import));
+        assert_eq!(out[5].0, Token::Ident("_print".into()));
+        assert_eq!(out[6].0, Token::Ident("readprint".into()));
+        assert_eq!(out[7].0, Token::Keyword(Keyword::For));
+        assert_eq!(out[8].0, Token::Keyword(Keyword::Args));
+        assert_eq!(out[9].0, Token::Keyword(Keyword::SelfK));
     }
 }

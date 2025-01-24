@@ -36,9 +36,6 @@ expr = assign
 assign = (ident / index) "=" expr / ne
 literal =/ "(" expr ")"
 
-def = %s"let" 1*WSP (ident / index / assign)
-literal =/ def
-
 block = "{" *(expr ";") "}"
 literal =/ block
 
