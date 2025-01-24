@@ -43,8 +43,23 @@ impl Node {
         self.right.as_ref()
     }
 
+    pub fn node_type(&self) -> NodeType {
+        self.node_type
+    }
+
     pub fn pos(&self) -> (usize, usize) {
         (self.line, self.chr)
+    }
+
+    pub(crate) fn destructure(self) -> (Val, Option<Val>, NodeType, usize, usize) {
+        let Self {
+            left: l,
+            right: r,
+            node_type: t,
+            line: ln,
+            chr: c,
+        } = self;
+        (l, r, t, ln, c)
     }
 }
 

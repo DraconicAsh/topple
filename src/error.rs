@@ -21,6 +21,8 @@ pub enum ToppleError {
     EmptyIndex(usize, usize),
     KeywordIsCall(Keyword, usize, usize),
     ExprPartialParse(usize, usize, usize, usize),
+    DefineKeyword(Keyword, usize, usize),
+    UseBeforeAssign(String, usize, usize),
 }
 
 impl Display for ToppleError {
@@ -63,7 +65,9 @@ impl Display for ToppleError {
             Self::UnexpectedToken(t, line, chr) => write!(f, "{}:{} Unexpected token {t:?}", line + 1, chr + 1),
             Self::EmptyIndex(line, chr) => write!(f, "{}:{} Index operation requires a value", line + 1, chr + 1),
             Self::KeywordIsCall(k, line, chr) => write!(f, "{}:{} \"{k}\" is a function and must be called as such", line + 1, chr + 1),
-            Self::ExprPartialParse(line, chr, end_l, end_c) => write!(f, "{}:{} Full expression could not be parsed; Stopped at {end_l}:{end_c}", line + 1, chr + 1),
+            Self::ExprPartialParse(line, chr, end_l, end_c) => write!(f, "{}:{} Full expression could not be parsed; Stopped at {}:{}", line + 1, chr + 1, end_l + 1, end_c + 1),
+            Self::DefineKeyword(k, line, chr) => write!(f, "{}:{} \"{}\" is a keyword and cannot be used as a variable name", line + 1, chr + 1, k),
+            Self::UseBeforeAssign(s, line, chr) => write!(f, "{}:{} Cannot use variable \"{}\" before it has a value assigned", line + 1, chr + 1, s),
         }
     }
 }
@@ -85,6 +89,8 @@ impl std::cmp::PartialEq for ToppleError {
             (ToppleError::UnexpectedToken(..), ToppleError::UnexpectedToken(..)) |
             (ToppleError::KeywordIsCall(..), ToppleError::KeywordIsCall(..)) |
             (ToppleError::ExprPartialParse(..), ToppleError::ExprPartialParse(..)) |
+            (ToppleError::DefineKeyword(..), ToppleError::DefineKeyword(..)) |
+            (ToppleError::UseBeforeAssign(..), ToppleError::UseBeforeAssign(..)) |
             (ToppleError::EmptyIndex(..), ToppleError::EmptyIndex(..)) => true,
             _ => false,
         }
