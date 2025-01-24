@@ -1,7 +1,6 @@
 use crate::error::*;
 use crate::lexer::*;
 use crate::types::ByteTable;
-use crate::types::ToppleType;
 use std::fmt::Display;
 
 pub type AST = Vec<Node>;
@@ -485,7 +484,7 @@ fn parse_call(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
         Val::Node(Box::new(index.clone()))
     } else {
         match index.left {
-            Val::Ident(_) => index.left.clone(),
+            Val::Ident(_) | Val::Block(_) => index.left.clone(),
             _ => return Ok(index),
         }
     };
@@ -1188,6 +1187,33 @@ mod parser_tests {
         table.push(ident);
         let call = Node::new_binary("func".into(), Val::Table(table), NodeType::Call, 0, 0);
         call
+    }
+
+    #[test]
+    fn call_anonymous() {
+        let buf = "{let x = args[0] * 3; x + args[1];}(3, 1);";
+        let out = parse_test_input(buf);
+        assert_eq!(anonymous_node(), out[0]);
+    }
+
+    fn anonymous_node() -> Node {
+        let mut block = Vec::with_capacity(2);
+        let args = Val::Ident(Ident::Keyword(Keyword::Args));
+        let index = Node::new_binary(args.clone(), 0.into(), NodeType::Index, 0, 9);
+        let mult = Node::new_binary(index.into(), 3.into(), NodeType::Mult, 0, 9);
+        let assign = Node::new_binary("x".into(), mult.into(), NodeType::Assign, 0, 5);
+        let def = Node::new_unary(assign.into(), NodeType::Def, 0, 1);
+        block.push(def);
+        let index = Node::new_binary(args, 1.into(), NodeType::Index, 0, 26);
+        let add = Node::new_binary("x".into(), index.into(), NodeType::Add, 0, 22);
+        block.push(add);
+        let block = Val::Block(block);
+
+        let arg0 = Node::new_unary(3.into(), NodeType::Literal, 0, 36);
+        let arg1 = Node::new_unary(1.into(), NodeType::Literal, 0, 39);
+        let table = Val::Table(vec![arg0, arg1]);
+
+        Node::new_binary(block, table, NodeType::Call, 0, 0)
     }
 
     #[test]

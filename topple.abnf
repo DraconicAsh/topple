@@ -5,7 +5,7 @@ table = expr *("," *WSP literal)
 literal =/ "[" table "]"
 
 index = literal / ident "." ident / ident "[" expr "]"
-call = index / (ident / index) "(" table ")"
+call = index / (ident / index / block) "(" table ")"
 
 bit-not = call / "!" call
 
