@@ -53,7 +53,7 @@ pub enum SlimVal {
     Ident(Ident),
     Keyword(Keyword),
     Table(Vec<SlimNode>),
-    Block(Block),
+    Block(SlimAST),
     Node(Box<SlimNode>),
 }
 
@@ -63,56 +63,17 @@ impl From<Val> for SlimVal {
             Val::ByteTable(b) => SlimVal::ByteTable(b),
             Val::Ident(i) => SlimVal::Ident(i),
             Val::Keyword(k) => SlimVal::Keyword(k),
-            Val::Table(t) => SlimVal::Table(table_from_parser(t)),
-            Val::Block(b) => SlimVal::Block(b.into()),
+            Val::Table(t) => SlimVal::Table(ast_from_parser(t)),
+            Val::Block(b) => SlimVal::Block(ast_from_parser(b)),
             Val::Node(n) => SlimVal::Node(Box::new(Into::into(*n))),
         }
     }
 }
 
-fn table_from_parser(table: crate::parser::AST) -> Vec<SlimNode> {
-    let mut res = Vec::with_capacity(table.len());
-    for n in table {
+fn ast_from_parser(ast: crate::parser::AST) -> Vec<SlimNode> {
+    let mut res = Vec::with_capacity(ast.len());
+    for n in ast {
         res.push(n.into());
     }
     res
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Block {
-    block: SlimAST,
-    implicit_args: Vec<String>,
-}
-
-impl Block {
-    pub fn new(block: SlimAST) -> Self {
-        Self {
-            block,
-            implicit_args: Vec::new(),
-        }
-    }
-
-    pub fn with_args(block: SlimAST, implicit_args: Vec<String>) -> Self {
-        Self {
-            block,
-            implicit_args,
-        }
-    }
-
-    pub fn args(&mut self) -> &mut Vec<String> {
-        &mut self.implicit_args
-    }
-}
-
-impl From<AST> for Block {
-    fn from(value: AST) -> Self {
-        let mut block = Vec::with_capacity(value.len());
-        for n in value {
-            block.push(n.into());
-        }
-        Self {
-            block,
-            implicit_args: Vec::new(),
-        }
-    }
 }
