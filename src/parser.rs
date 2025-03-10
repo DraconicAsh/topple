@@ -900,10 +900,23 @@ impl Display for Val {
             Self::Ident(s) => write!(f, "{s}"),
             Self::Keyword(k) => write!(f, "{k}"),
             Self::Node(n) => write!(f, "{n}"),
-            Self::Block(b) => write!(f, "{}", block_print(&b, 0)),
-            Self::Table(t) => write!(f, "{t:?}"),
+            Self::Block(b) => write!(f, "{}", block_print(b, 0)),
+            Self::Table(t) => write!(f, "{}", table_print(t)),
         }
     }
+}
+
+fn table_print(table: &Vec<Node>) -> String {
+    let mut s = String::new();
+    s.push('[');
+    for node in table {
+        s += &node.to_string();
+        s += ", "
+    }
+    s.pop();
+    s.pop();
+    s.push(']');
+    s
 }
 
 pub(crate) fn block_print(block: &AST, depth: usize) -> String {
