@@ -1,6 +1,8 @@
 use crate::parser::block_print;
 use crate::parser::AST;
 use std::convert::From;
+use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ToppleType {
@@ -96,21 +98,133 @@ impl ByteTable {
         let ret = Self { table };
         Some(ret)
     }
+
+    pub fn trim(&mut self) {
+        let mut i = self.table.len();
+        while i != 0 {
+            i -= 1;
+            if self.table[i] == 0 {
+                self.table.pop();
+            } else {
+                break;
+            }
+        }
+    }
+}
+
+impl Add for ByteTable {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        todo!()
+    }
+}
+
+impl Sub for ByteTable {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        todo!()
+    }
+}
+
+impl Mul for ByteTable {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        todo!()
+    }
+}
+
+impl Div for ByteTable {
+    type Output = Self;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        todo!()
+    }
+}
+
+impl Not for ByteTable {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        todo!()
+    }
+}
+
+impl BitAnd for ByteTable {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        todo!()
+    }
+}
+
+impl BitOr for ByteTable {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        todo!()
+    }
+}
+
+impl BitXor for ByteTable {
+    type Output = Self;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        todo!()
+    }
+}
+
+impl Shl for ByteTable {
+    type Output = Self;
+
+    fn shl(self, rhs: Self) -> Self::Output {
+        todo!()
+    }
+}
+
+impl Shl<u64> for ByteTable {
+    type Output = Self;
+
+    fn shl(self, rhs: u64) -> Self::Output {
+        todo!()
+    }
+}
+
+impl Shr for ByteTable {
+    type Output = Self;
+
+    fn shr(self, rhs: Self) -> Self::Output {
+        todo!()
+    }
+}
+
+impl Shr<u64> for ByteTable {
+    type Output = Self;
+
+    fn shr(self, rhs: u64) -> Self::Output {
+        todo!()
+    }
 }
 
 impl From<u64> for ByteTable {
     fn from(value: u64) -> Self {
-        Self {
+        let mut t = Self {
             table: value.to_le_bytes().to_vec(),
-        }
+        };
+        t.trim();
+        t
     }
 }
 
 impl From<u128> for ByteTable {
     fn from(value: u128) -> Self {
-        Self {
+        let mut t = Self {
             table: value.to_le_bytes().to_vec(),
-        }
+        };
+        t.trim();
+        t
     }
 }
 
@@ -174,10 +288,179 @@ mod type_tests {
         assert_eq!("[00000001]", format!("{short}"));
 
         let num = ByteTable::from(64_u64);
-        let s = format!(
-            "[01000000, {0:08b}, {0:08b}, {0:08b}, {0:08b}, {0:08b}, {0:08b}, {0:08b}]",
-            0
-        );
-        assert_eq!(s, format!("{num}"));
+        assert_eq!("[01000000]", format!("{num}"));
+    }
+
+    #[test]
+    fn short_int_table() {
+        let byte: ByteTable = 27_u64.into();
+        let table = ByteTable { table: vec![27] };
+        assert_eq!(table, byte);
+        assert_eq!(1, byte.len());
+
+        let bytes: ByteTable = 0b00010000_00000000_00000000_00000000_u64.into();
+        let table = ByteTable {
+            table: vec![0, 0, 0, 0b00010000],
+        };
+        assert_eq!(table, bytes);
+        assert_eq!(4, table.len());
+    }
+}
+
+#[cfg(test)]
+mod math_ops_tests {
+    use super::*;
+
+    #[test]
+    fn addition() {
+        let a: ByteTable = num(27);
+        let b: ByteTable = num(3);
+        let ans = ByteTable { table: vec![30] };
+        assert_eq!(ans, a + b);
+    }
+
+    #[test]
+    fn addition_extend() {
+        let a: ByteTable = num(0b10000000);
+        let ans = ByteTable {
+            table: vec![0, 0b00000001],
+        };
+        assert_eq!(ans, a.clone() + a);
+    }
+
+    #[test]
+    fn subtraction() {
+        let a: ByteTable = num(27);
+        let b: ByteTable = num(7);
+        let ans = ByteTable { table: vec![20] };
+        assert_eq!(ans, a - b);
+    }
+
+    #[test]
+    fn subtraction_16_bit() {
+        let a: ByteTable = num(0b00000001_00000000);
+        let b: ByteTable = num(0b10000000);
+        let ans = ByteTable {
+            table: vec![0, 0b10000000],
+        };
+        assert_eq!(ans, a - b);
+    }
+
+    #[test]
+    fn multiplication() {
+        let a: ByteTable = num(20);
+        let b: ByteTable = num(3);
+        let ans = ByteTable { table: vec![60] };
+        assert_eq!(ans, a * b);
+    }
+
+    #[test]
+    fn multiplication_extend() {
+        let a: ByteTable = num(20);
+        let b: ByteTable = num(30);
+        let ans = ByteTable {
+            table: vec![0b0101_1000, 0b0000_0010],
+        };
+        assert_eq!(ans, a * b);
+    }
+
+    #[test]
+    fn division() {
+        let a: ByteTable = num(18);
+        let b: ByteTable = num(3);
+        let ans = ByteTable { table: vec![6] };
+        assert_eq!(ans, a / b);
+    }
+
+    #[test]
+    fn division_cutoff() {
+        let a: ByteTable = num(20);
+        let b: ByteTable = num(3);
+        let ans = ByteTable { table: vec![6] };
+        assert_eq!(ans, a / b);
+    }
+
+    fn num(n: u64) -> ByteTable {
+        n.into()
+    }
+}
+
+#[cfg(test)]
+mod bitwise_ops_tests {
+    use super::*;
+
+    #[test]
+    fn bit_not() {
+        let a = num(1);
+        let ans = ByteTable {
+            table: vec![0b11111110],
+        };
+        assert_eq!(ans, !a);
+    }
+
+    #[test]
+    fn bit_and() {
+        let a = num(27);
+        let b = num(10);
+        let ans = ByteTable { table: vec![10] };
+        assert_eq!(ans, a & b);
+    }
+
+    #[test]
+    fn bit_or() {
+        let a = num(256);
+        let b = num(1);
+        let ans = ByteTable {
+            table: vec![0b0000_0001, 0b0000_0001],
+        };
+        assert_eq!(ans, a | b);
+    }
+
+    #[test]
+    fn bit_xor() {
+        let a = num(27);
+        let b = num(10);
+        let ans = ByteTable { table: vec![17] };
+        assert_eq!(ans, a ^ b);
+    }
+
+    #[test]
+    fn shift_left() {
+        let a = num(1);
+        let b = num(4);
+        let ans = ByteTable { table: vec![16] };
+        assert_eq!(ans, a << b);
+    }
+
+    #[test]
+    fn shift_left_extend() {
+        let a = num(128);
+        let b = num(1);
+        let ans = ByteTable {
+            table: vec![0, 0b0000_0001],
+        };
+        assert_eq!(ans, a << b);
+    }
+
+    #[test]
+    fn shift_right() {
+        let a = num(0b00010001_00000000);
+        let b = num(5);
+        let ans = ByteTable {
+            table: vec![0, 0b10001000],
+        };
+        assert_eq!(ans, a >> b);
+    }
+
+    #[test]
+    fn shift_right_cutoff() {
+        let a = num(11);
+        let b = num(1);
+        let ans = ByteTable { table: vec![5] };
+        assert_eq!(ans, a >> b);
+    }
+
+    fn num(n: u64) -> ByteTable {
+        n.into()
     }
 }

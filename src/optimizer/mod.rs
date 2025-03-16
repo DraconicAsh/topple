@@ -5,6 +5,8 @@ use std::convert::From;
 
 mod ssa;
 
+pub use ssa::ssa_conversion;
+
 pub type SlimAST = Vec<SlimNode>;
 
 #[derive(Debug, PartialEq, Clone)]
