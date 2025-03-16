@@ -378,8 +378,8 @@ fn parse_index(slice: TokenStreamSlice, idx: &mut usize) -> ToppleResult<Node> {
     if *idx >= slice.len() {
         return Ok(lit);
     }
-    let left = match lit.left {
-        Val::Ident(_) => lit.left.clone(),
+    let left = match lit.node_type {
+        NodeType::Literal => lit.left.clone(),
         _ => return Ok(lit),
     };
     let (token, line, chr) = &slice[*idx];
@@ -1295,6 +1295,40 @@ mod parser_tests {
             0,
         );
         call
+    }
+
+    #[test]
+    fn index_block() {
+        let out = parse_test_input("{\nx = 0;\ny = x + 1;\n}[0];");
+        assert_eq!(index_block_node(), out[0]);
+    }
+
+    fn index_block_node() -> Node {
+        let mut block = Vec::with_capacity(2);
+        let x_ass = Node::new_binary("x".into(), 0.into(), NodeType::Assign, 1, 0);
+        block.push(x_ass);
+        let add = Node::new_binary("x".into(), 1.into(), NodeType::Add, 2, 4);
+        let y_ass = Node::new_binary("y".into(), add.into(), NodeType::Assign, 2, 0);
+        block.push(y_ass);
+        let idx = Node::new_binary(Val::Block(block), 0.into(), NodeType::Index, 0, 0);
+        idx
+    }
+
+    #[test]
+    fn direct_index_table() {
+        let out = parse_test_input("[2, 3, 4, 5].3;");
+        assert_eq!(direct_index_node(), out[0]);
+    }
+
+    fn direct_index_node() -> Node {
+        let two = Node::new_unary(2.into(), NodeType::Literal, 0, 1);
+        let three = Node::new_unary(3.into(), NodeType::Literal, 0, 4);
+        let four = Node::new_unary(4.into(), NodeType::Literal, 0, 7);
+        let five = Node::new_unary(5.into(), NodeType::Literal, 0, 10);
+        let table = vec![two, three, four, five];
+
+        let idx = Node::new_binary(Val::Table(table), 3.into(), NodeType::Index, 0, 0);
+        idx
     }
 
     fn parse_test_input(input: &str) -> AST {

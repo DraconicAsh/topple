@@ -142,6 +142,23 @@ mod ssa_tests {
     }
 
     #[test]
+    fn index_ssa() {
+        let data = test_input("x = [0, 1];\nx.0 = 1;\nx = [1, 1];\nx.1 = 0;");
+
+        let mut test = Vec::with_capacity(4);
+        let x0_ass = SlimNode::new_binary(ident("0_x"), num_table(vec![0, 1]), NodeType::Assign);
+        test.push(x0_ass);
+        let idx = SlimNode::new_binary(index("0_x", 0), num(1), NodeType::Assign);
+        test.push(idx);
+        let x1_ass = SlimNode::new_binary(ident("1_x"), num_table(vec![1, 1]), NodeType::Assign);
+        test.push(x1_ass);
+        let idx = SlimNode::new_binary(index("1_x", 1), num(0), NodeType::Assign);
+        test.push(idx);
+
+        assert_eq!(test, data);
+    }
+
+    #[test]
     #[should_panic(expected = "before it has a value assigned")]
     fn unassigned_var() {
         test_input("x = 2 * 2; y = a * 2;");
@@ -157,6 +174,20 @@ mod ssa_tests {
 
     fn ident(s: &str) -> SlimVal {
         SlimVal::Ident(Ident::Var(s.into()))
+    }
+
+    fn num_table(t: Vec<u64>) -> SlimVal {
+        let mut res = Vec::with_capacity(t.len());
+        for n in t {
+            let node = SlimNode::new_unary(num(n), NodeType::Literal);
+            res.push(node);
+        }
+        SlimVal::Table(res)
+    }
+
+    fn index(s: &str, i: u64) -> SlimVal {
+        let n = SlimNode::new_binary(ident(s), num(i), NodeType::Index);
+        node(n)
     }
 
     fn test_input(input: &str) -> SlimAST {

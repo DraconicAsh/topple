@@ -7,7 +7,7 @@ mod ssa;
 
 pub type SlimAST = Vec<SlimNode>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SlimNode {
     left: SlimVal,
     right: Option<SlimVal>,
@@ -47,7 +47,7 @@ impl From<Node> for SlimNode {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SlimVal {
     ByteTable(ByteTable),
     Ident(Ident),
